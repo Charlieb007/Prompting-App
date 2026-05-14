@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { HELP_CONTENT } from './help-content.js';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 const CATEGORIES = [
   { id: 'general', label: 'General' },
   { id: 'writing', label: 'Writing' },
@@ -17,56 +19,13 @@ const MAX_HISTORY = 20;
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 const MODELS = [
-  {
-    id: 'claude-opus-4-7',
-    name: 'Claude Opus 4.7',
-    provider: 'Anthropic',
-    description: 'Most capable. Best for complex prompts.',
-    available: true,
-  },
-  {
-    id: 'claude-sonnet-4-6',
-    name: 'Claude Sonnet 4.6',
-    provider: 'Anthropic',
-    description: 'Balanced speed and capability.',
-    available: true,
-    isDefault: true,
-  },
-  {
-    id: 'claude-opus-4-6',
-    name: 'Claude Opus 4.6',
-    provider: 'Anthropic',
-    description: 'Previous flagship. Still highly capable.',
-    available: true,
-  },
-  {
-    id: 'claude-haiku-4-5-20251001',
-    name: 'Claude Haiku 4.5',
-    provider: 'Anthropic',
-    description: 'Fastest and cheapest. Good for simple prompts.',
-    available: true,
-  },
-  {
-    id: 'gpt-4',
-    name: 'GPT-4',
-    provider: 'OpenAI',
-    description: 'Coming soon',
-    available: false,
-  },
-  {
-    id: 'gpt-4-turbo',
-    name: 'GPT-4 Turbo',
-    provider: 'OpenAI',
-    description: 'Coming soon',
-    available: false,
-  },
-  {
-    id: 'gemini-pro',
-    name: 'Gemini Pro',
-    provider: 'Google',
-    description: 'Coming soon',
-    available: false,
-  },
+  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', provider: 'Anthropic', description: 'Most capable. Best for complex prompts.', available: true },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', description: 'Balanced speed and capability.', available: true, isDefault: true },
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'Anthropic', description: 'Previous flagship. Still highly capable.', available: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'Anthropic', description: 'Fastest and cheapest. Good for simple prompts.', available: true },
+  { id: 'gpt-4', name: 'GPT-4', provider: 'OpenAI', description: 'Coming soon', available: false },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', description: 'Coming soon', available: false },
+  { id: 'gemini-pro', name: 'Gemini Pro', provider: 'Google', description: 'Coming soon', available: false },
 ];
 
 const DEFAULT_SETTINGS = { model: DEFAULT_MODEL };
@@ -140,15 +99,19 @@ function CheckIcon() {
   );
 }
 
-/* ── Rail config ─────────────────────────────────────────── */
+function SparkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 L13.5 9 L19 10.5 L13.5 12 L12 18 L10.5 12 L5 10.5 L10.5 9 Z" />
+    </svg>
+  );
+}
 
 const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
-
-/* ── Drawer views ────────────────────────────────────────── */
 
 function HistoryView({ history, onLoad, onClear }) {
   return (
@@ -162,7 +125,7 @@ function HistoryView({ history, onLoad, onClear }) {
       <div className="drawer-body">
         {history.length === 0 ? (
           <div className="drawer-empty">
-            Your improved prompts will appear here.
+            Your refined prompts will appear here.
           </div>
         ) : (
           <ul className="history-list">
@@ -208,9 +171,7 @@ function HelpView() {
           <div key={section.id} className="help-section">
             <h4>{section.title}</h4>
             {section.body.map((block, i) => {
-              if (block.type === 'text') {
-                return <p key={i} className="help-text">{block.text}</p>;
-              }
+              if (block.type === 'text') return <p key={i} className="help-text">{block.text}</p>;
               if (block.type === 'step') {
                 return (
                   <div key={i} className="help-step">
@@ -234,9 +195,7 @@ function HelpView() {
                   </ul>
                 );
               }
-              if (block.type === 'note') {
-                return <div key={i} className="help-note">{block.text}</div>;
-              }
+              if (block.type === 'note') return <div key={i} className="help-note">{block.text}</div>;
               return null;
             })}
           </div>
@@ -260,7 +219,7 @@ function SettingsView({ settings, onChange, onReset }) {
         <div className="settings-group">
           <div className="settings-group-label">Model</div>
           <div className="settings-group-hint">
-            Choose which AI model improves your prompts. Claude Sonnet 4.6 is the default.
+            Choose which AI model refines your prompts. Claude Sonnet 4.6 is the default.
           </div>
 
           <div className="model-section-label">Anthropic</div>
@@ -306,12 +265,38 @@ function SettingsView({ settings, onChange, onReset }) {
   );
 }
 
-/* ── App ─────────────────────────────────────────────────── */
+/* ── Changes panel (the teaching layer) ──────────────────── */
+
+function ChangesPanel({ changes }) {
+  if (!changes || changes.length === 0) return null;
+
+  return (
+    <div className="changes">
+      <div className="changes-header">
+        <span className="changes-icon"><SparkIcon /></span>
+        <span className="changes-label">What changed</span>
+        <span className="changes-count">{changes.length}</span>
+      </div>
+      <ol className="changes-list">
+        {changes.map((c, i) => (
+          <li key={i} className="changes-item">
+            <span className="changes-num">{i + 1}</span>
+            <div className="changes-body">
+              <div className="changes-title">{c.title}</div>
+              <div className="changes-explanation">{c.explanation}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
 function App() {
   const [roughPrompt, setRoughPrompt] = useState('');
   const [category, setCategory] = useState('general');
   const [improvedPrompt, setImprovedPrompt] = useState('');
+  const [changes, setChanges] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -381,6 +366,7 @@ function App() {
     setRoughPrompt(entry.rough);
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
+    setChanges(entry.changes || []);
     setError('');
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -401,10 +387,11 @@ function App() {
     setLoading(true);
     setError('');
     setImprovedPrompt('');
+    setChanges([]);
     setCopied(false);
 
     try {
-      const response = await fetch('http://localhost:3001/api/improve', {
+      const response = await fetch(`${API_URL}/api/improve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -414,19 +401,24 @@ function App() {
         }),
       });
 
-      if (!response.ok) throw new Error('Server returned an error.');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Server returned an error.');
+      }
 
       const data = await response.json();
       setImprovedPrompt(data.improvedPrompt);
+      setChanges(data.changes || []);
       saveToHistory({
         rough: roughPrompt,
         improved: data.improvedPrompt,
+        changes: data.changes || [],
         category,
         model: settings.model,
         timestamp: Date.now(),
       });
     } catch (err) {
-      setError('Something went wrong. Is the backend running?');
+      setError(err.message || 'Something went wrong. Is the backend running?');
       console.error(err);
     } finally {
       setLoading(false);
@@ -483,19 +475,11 @@ function App() {
       <aside className={`drawer ${drawerOpen ? '' : 'closed'}`}>
         <div className="drawer-inner">
           {activeView === 'history' && (
-            <HistoryView
-              history={history}
-              onLoad={loadFromHistory}
-              onClear={clearHistory}
-            />
+            <HistoryView history={history} onLoad={loadFromHistory} onClear={clearHistory} />
           )}
           {activeView === 'help' && <HelpView />}
           {activeView === 'settings' && (
-            <SettingsView
-              settings={settings}
-              onChange={updateSettings}
-              onReset={resetSettings}
-            />
+            <SettingsView settings={settings} onChange={updateSettings} onReset={resetSettings} />
           )}
         </div>
       </aside>
@@ -503,8 +487,8 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>Prompt Improver</h1>
-            <p>Turn rough ideas into well-structured prompts</p>
+            <h1>Prompt Refinery</h1>
+            <p>Well-structured prompts.</p>
           </div>
         </header>
 
@@ -512,7 +496,7 @@ function App() {
           <div className="conversation-inner">
             {showEmpty && (
               <div className="empty-state">
-                <h2>What can I help you improve?</h2>
+                <h2>What can I help you refine?</h2>
                 <p>Type a rough prompt below and pick a category.</p>
               </div>
             )}
@@ -520,7 +504,7 @@ function App() {
             {loading && (
               <div className="message">
                 <div className="message-header">
-                  <span className="message-label">Improved prompt</span>
+                  <span className="message-label">Refined prompt</span>
                 </div>
                 <div className="thinking-block">
                   <span className="thinking-dots">
@@ -534,15 +518,18 @@ function App() {
             )}
 
             {improvedPrompt && !loading && (
-              <div className="message">
-                <div className="message-header">
-                  <span className="message-label">Improved prompt</span>
-                  <button className="copy-btn" onClick={handleCopy}>
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
+              <>
+                <div className="message">
+                  <div className="message-header">
+                    <span className="message-label">Refined prompt</span>
+                    <button className="copy-btn" onClick={handleCopy}>
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <div className="message-body">{improvedPrompt}</div>
                 </div>
-                <div className="message-body">{improvedPrompt}</div>
-              </div>
+                <ChangesPanel changes={changes} />
+              </>
             )}
 
             {error && (
@@ -585,7 +572,7 @@ function App() {
                 className="send-btn"
                 onClick={handleImprove}
                 disabled={loading || !roughPrompt.trim()}
-                aria-label="Improve prompt"
+                aria-label="Refine prompt"
               >
                 <SendIcon />
               </button>
