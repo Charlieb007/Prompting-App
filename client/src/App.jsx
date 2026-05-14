@@ -1,122 +1,172 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect } from 'react';
+import './App.css';
+
+const CATEGORIES = [
+  { id: 'general', label: 'General' },
+  { id: 'writing', label: 'Writing' },
+  { id: 'code', label: 'Code' },
+  { id: 'analysis', label: 'Analysis' },
+  { id: 'brainstorm', label: 'Brainstorm' },
+];
+
+const STORAGE_KEY = 'prompt-improver-history';
+const MAX_HISTORY = 10;
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [roughPrompt, setRoughPrompt] = useState('');
+  const [category, setCategory] = useState('general');
+  const [improvedPrompt, setImprovedPrompt] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch {
+        setHistory([]);
+      }
+    }
+  }, []);
+
+  function saveToHistory(entry) {
+    const updated = [entry, ...history].slice(0, MAX_HISTORY);
+    setHistory(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  }
+
+  function clearHistory() {
+    if (!confirm('Clear all history?')) return;
+    setHistory([]);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function loadFromHistory(entry) {
+    setRoughPrompt(entry.rough);
+    setCategory(entry.category);
+    setImprovedPrompt(entry.improved);
+    setError('');
+  }
+
+  async function handleImprove() {
+    if (!roughPrompt.trim()) {
+      setError('Please enter a prompt first.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setImprovedPrompt('');
+    setCopied(false);
+
+    try {
+      const response = await fetch('http://localhost:3001/api/improve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: roughPrompt, category }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Server returned an error.');
+      }
+
+      const data = await response.json();
+      setImprovedPrompt(data.improvedPrompt);
+      saveToHistory({
+        rough: roughPrompt,
+        improved: data.improvedPrompt,
+        category,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      setError('Something went wrong. Is the backend running?');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(improvedPrompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app">
+      <header className="header">
+        <h1>Prompt Improver</h1>
+        <p className="tagline">Turn rough ideas into clear, well-structured prompts.</p>
+      </header>
 
-      <div className="ticks"></div>
+      <div className="card">
+        <label>Category</label>
+        <div className="category-row">
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              className={`category-chip ${category === c.id ? 'active' : ''}`}
+              onClick={() => setCategory(c.id)}
+              type="button"
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
+        <label htmlFor="prompt-input">Your rough prompt</label>
+        <textarea
+          id="prompt-input"
+          value={roughPrompt}
+          onChange={(e) => setRoughPrompt(e.target.value)}
+          placeholder="e.g. help me write a presentation about our Q2 sales"
+          rows={5}
+        />
+
+        <div className="button-row">
+          <button onClick={handleImprove} disabled={loading}>
+            {loading ? 'Improving...' : 'Improve prompt'}
+          </button>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+      </div>
+
+      {improvedPrompt && (
+        <div className="result">
+          <div className="result-header">
+            <h2>Improved prompt</h2>
+            <button className="copy-button" onClick={handleCopy}>
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div className="result-body">{improvedPrompt}</div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="history">
+          <div className="history-header">
+            <h2>Recent prompts</h2>
+            <button className="copy-button" onClick={clearHistory}>Clear all</button>
+          </div>
+          <ul className="history-list">
+            {history.map((entry) => (
+              <li key={entry.timestamp}>
+                <button className="history-item" onClick={() => loadFromHistory(entry)}>
+                  <span className="history-category">{entry.category}</span>
+                  <span className="history-text">{entry.rough}</span>
+                </button>
+              </li>
+            ))}
           </ul>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
