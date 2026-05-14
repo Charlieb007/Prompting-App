@@ -13,6 +13,15 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+
+const ALLOWED_MODELS = new Set([
+  'claude-opus-4-7',
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+]);
+
 const CATEGORY_INSTRUCTIONS = {
   general:
     'Rewrite the prompt to be clear, specific, and well-structured. Add concrete details where the original is vague, specify the desired output format, and break complex tasks into steps.',
@@ -31,19 +40,20 @@ app.get('/api/health', (req, res) => {
 });
 
 app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general' } = req.body;
+  const { prompt, category = 'general', model } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required.' });
   }
 
+  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
   const instruction = CATEGORY_INSTRUCTIONS[category] || CATEGORY_INSTRUCTIONS.general;
 
   const systemPrompt = `You are an expert at prompt engineering. ${instruction} Return ONLY the improved prompt itself, no preamble, no explanation, no markdown headers describing what you did.`;
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: safeModel,
       max_tokens: 1024,
       system: systemPrompt,
       messages: [
@@ -55,7 +65,7 @@ app.post('/api/improve', async (req, res) => {
     });
 
     const improvedPrompt = message.content[0].text;
-    res.json({ improvedPrompt });
+    res.json({ improvedPrompt, modelUsed: safeModel });
   } catch (error) {
     console.error('Anthropic API error:', error);
     res.status(500).json({ error: 'Failed to improve prompt.' });
