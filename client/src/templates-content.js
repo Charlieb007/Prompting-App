@@ -1,0 +1,58 @@
+export const TEMPLATES = [
+  {
+    id: 'email-difficult',
+    title: 'Difficult email',
+    description: 'Deliver bad news, push back, or have a hard conversation.',
+    category: 'writing',
+    rough: 'help me write an email to my manager about why I missed the deadline',
+  },
+  {
+    id: 'blog-post',
+    title: 'Blog post outline',
+    description: 'Get a structured outline before you start writing.',
+    category: 'writing',
+    rough: 'I want to write a blog post about working from home',
+  },
+  {
+    id: 'code-function',
+    title: 'Write a function',
+    description: 'Generate a specific function with constraints and edge cases.',
+    category: 'code',
+    rough: 'write me a function that sorts an array',
+  },
+  {
+    id: 'code-review',
+    title: 'Code review request',
+    description: 'Ask for thoughtful, focused feedback on code you wrote.',
+    category: 'code',
+    rough: 'review this code and tell me what could be improved',
+  },
+  {
+    id: 'data-analysis',
+    title: 'Analyze a dataset',
+    description: 'Get structured findings from data you have.',
+    category: 'analysis',
+    rough: 'analyze my sales data and tell me what trends you see',
+  },
+  {
+    id: 'research-summary',
+    title: 'Research summary',
+    description: 'Summarize an article, report, or document.',
+    category: 'analysis',
+    rough: 'summarize this article for me',
+  },
+  {
+    id: 'brainstorm-ideas',
+    title: 'Brainstorm ideas',
+    description: 'Generate a structured list of options for any decision.',
+    category: 'brainstorm',
+    rough: 'give me ideas for a team building event',
+  },
+  {
+    id: 'product-name',
+    title: 'Name a product',
+    description: 'Brainstorm names with criteria and categorization.',
+    category: 'brainstorm',
+    rough: 'help me come up with a name for my new app',
+  },
+];

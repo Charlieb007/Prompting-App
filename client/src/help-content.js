@@ -11,12 +11,26 @@ export const HELP_CONTENT = [
     id: 'tutorial',
     title: 'Step-by-step tutorial',
     body: [
-      { type: 'step', n: 1, title: 'Pick a category', text: 'Above the input area, you\'ll see five category chips. Click the one that matches your task. Each category tunes the refinement to that kind of writing.' },
-      { type: 'step', n: 2, title: 'Type a rough prompt', text: 'Don\'t worry about being polished. "Write me an email about a project delay" is enough. The app will fill in the structure for you.' },
+      { type: 'step', n: 1, title: 'Pick a category', text: 'Above the input area, you\'ll see five category chips. Click the one that matches your task. Or pick a template (next step) which sets the category for you.' },
+      { type: 'step', n: 2, title: 'Type a rough prompt — or use a template', text: 'Don\'t worry about being polished. "Write me an email about a project delay" is enough. If you\'re not sure what to type, open the Templates panel from the left rail and pick a starting point.' },
       { type: 'step', n: 3, title: 'Submit', text: 'Click the arrow button on the right, or press Cmd+Enter (Ctrl+Enter on Windows/Linux). The refined prompt will appear within a few seconds.' },
-      { type: 'step', n: 4, title: 'Read what changed', text: 'Below the refined prompt, you\'ll see a "What changed" panel listing the specific improvements that were made and why. This is the teaching part. Read it.' },
+      { type: 'step', n: 4, title: 'Read what changed', text: 'Below the refined prompt, you\'ll see a "What changed" panel listing the specific improvements that were made and why. This is the teaching part.' },
       { type: 'step', n: 5, title: 'Copy and use it', text: 'Click the Copy button at the top of the refined prompt. Paste it into Claude, ChatGPT, or wherever you\'re working.' },
       { type: 'step', n: 6, title: 'Revisit history', text: 'Every refinement is automatically saved. Click the History icon in the left rail to see your recent prompts.' },
+    ],
+  },
+  {
+    id: 'templates',
+    title: 'Templates',
+    body: [
+      { type: 'text', text: 'If you\'re not sure where to start, open Templates from the left rail. You\'ll find common scenarios grouped by category — drafting a difficult email, writing a function, summarizing research, brainstorming ideas, and more.' },
+      { type: 'text', text: 'Click any template to load it into the composer. The rough prompt and matching category are filled in for you. You can edit the rough prompt before submitting or just hit submit to see what the refined version looks like.' },
+      { type: 'list', items: [
+        { label: 'Edit before submitting', text: 'Templates are starting points, not exact prompts. Replace placeholders with your actual situation for better results.' },
+        { label: 'Compare categories', text: 'Try the same template under different categories to see how the refinement changes.' },
+        { label: 'Use them to learn', text: 'After refining a template, study the "What changed" panel — it shows the patterns that turn a generic ask into a strong prompt.' },
+      ]},
+      { type: 'note', text: 'Templates are static for now — you can\'t create your own. A "Saved prompts" feature is coming soon where you\'ll be able to star any refinement and reuse it later.' },
     ],
   },
   {

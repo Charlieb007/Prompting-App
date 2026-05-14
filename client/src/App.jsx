@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { HELP_CONTENT } from './help-content.js';
+import { TEMPLATES } from './templates-content.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -42,6 +43,11 @@ function formatTime(timestamp) {
   return new Date(timestamp).toLocaleDateString();
 }
 
+function categoryLabel(id) {
+  const cat = CATEGORIES.find((c) => c.id === id);
+  return cat ? cat.label : id;
+}
+
 /* ── Icon components ─────────────────────────────────────── */
 
 function SidebarIcon() {
@@ -59,6 +65,17 @@ function HistoryIcon() {
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <polyline points="3 3 3 8 8 8" />
       <polyline points="12 7 12 12 15 14" />
+    </svg>
+  );
+}
+
+function TemplatesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </svg>
   );
 }
@@ -109,9 +126,12 @@ function SparkIcon() {
 
 const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
+  { id: 'templates', label: 'Templates', icon: TemplatesIcon },
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
+
+/* ── Drawer views ────────────────────────────────────────── */
 
 function HistoryView({ history, onLoad, onClear }) {
   return (
@@ -124,9 +144,7 @@ function HistoryView({ history, onLoad, onClear }) {
       </div>
       <div className="drawer-body">
         {history.length === 0 ? (
-          <div className="drawer-empty">
-            Your refined prompts will appear here.
-          </div>
+          <div className="drawer-empty">Your refined prompts will appear here.</div>
         ) : (
           <ul className="history-list">
             {history.map((entry) => (
@@ -142,6 +160,43 @@ function HistoryView({ history, onLoad, onClear }) {
             ))}
           </ul>
         )}
+      </div>
+    </>
+  );
+}
+
+function TemplatesView({ onSelect }) {
+  const grouped = CATEGORIES.map((cat) => ({
+    ...cat,
+    templates: TEMPLATES.filter((t) => t.category === cat.id),
+  })).filter((group) => group.templates.length > 0);
+
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Templates</h3>
+      </div>
+      <div className="drawer-body templates-body">
+        <p className="templates-intro">
+          Start from a common scenario. Click any template to fill the composer, then edit or submit as-is.
+        </p>
+        {grouped.map((group) => (
+          <div key={group.id} className="templates-group">
+            <div className="templates-group-label">{group.label}</div>
+            <div className="templates-list">
+              {group.templates.map((t) => (
+                <button
+                  key={t.id}
+                  className="template-card"
+                  onClick={() => onSelect(t)}
+                >
+                  <div className="template-title">{t.title}</div>
+                  <div className="template-description">{t.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </>
   );
@@ -292,6 +347,8 @@ function ChangesPanel({ changes }) {
   );
 }
 
+/* ── App ─────────────────────────────────────────────────── */
+
 function App() {
   const [roughPrompt, setRoughPrompt] = useState('');
   const [category, setCategory] = useState('general');
@@ -371,6 +428,18 @@ function App() {
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  }
+
+  function loadFromTemplate(template) {
+    setRoughPrompt(template.rough);
+    setCategory(template.category);
+    setImprovedPrompt('');
+    setChanges([]);
+    setError('');
+    setActiveView(null);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 250);
   }
 
   function toggleView(id) {
@@ -477,6 +546,9 @@ function App() {
           {activeView === 'history' && (
             <HistoryView history={history} onLoad={loadFromHistory} onClear={clearHistory} />
           )}
+          {activeView === 'templates' && (
+            <TemplatesView onSelect={loadFromTemplate} />
+          )}
           {activeView === 'help' && <HelpView />}
           {activeView === 'settings' && (
             <SettingsView settings={settings} onChange={updateSettings} onReset={resetSettings} />
@@ -497,7 +569,7 @@ function App() {
             {showEmpty && (
               <div className="empty-state">
                 <h2>What can I help you refine?</h2>
-                <p>Type a rough prompt below and pick a category.</p>
+                <p>Type a rough prompt below, or pick a template from the sidebar.</p>
               </div>
             )}
 
