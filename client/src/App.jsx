@@ -48,7 +48,7 @@ function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-/* ── Icon components ─────────────────────────────────────── */
+/* ── Icons ───────────────────────────────────────────────── */
 
 function SidebarIcon() {
   return (
@@ -160,7 +160,7 @@ const RAIL_ITEMS = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
-/* ── Drawer views ────────────────────────────────────────── */
+/* ── Drawer views (unchanged from prior version) ─────────── */
 
 function HistoryView({ history, onLoad, onClear }) {
   return (
@@ -202,9 +202,7 @@ function SavedView({ saved, onLoad, onRename, onRemove }) {
       </div>
       <div className="drawer-body">
         {saved.length === 0 ? (
-          <div className="drawer-empty">
-            Star a refined prompt to save it here for later.
-          </div>
+          <div className="drawer-empty">Star a refined prompt to save it here for later.</div>
         ) : (
           <ul className="saved-list">
             {saved.map((entry) => (
@@ -236,8 +234,7 @@ function SavedItem({ entry, onLoad, onRename, onRemove }) {
   }, [editing]);
 
   function commitName() {
-    const trimmed = draftName.trim();
-    onRename(entry.id, trimmed);
+    onRename(entry.id, draftName.trim());
     setEditing(false);
   }
 
@@ -247,13 +244,8 @@ function SavedItem({ entry, onLoad, onRename, onRemove }) {
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitName();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
-    }
+    if (e.key === 'Enter') { e.preventDefault(); commitName(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
   }
 
   const displayName = entry.name || entry.rough;
@@ -278,9 +270,7 @@ function SavedItem({ entry, onLoad, onRename, onRemove }) {
             <span className="saved-time">{formatTime(entry.savedAt)}</span>
           </div>
           <span className="saved-name">{displayName}</span>
-          {entry.name && (
-            <span className="saved-preview">{entry.rough}</span>
-          )}
+          {entry.name && <span className="saved-preview">{entry.rough}</span>}
         </button>
       )}
       <div className="saved-actions">
@@ -485,6 +475,64 @@ function ChangesPanel({ changes }) {
   );
 }
 
+/* ── SSE stream parser ───────────────────────────────────── */
+
+async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onDone, onError, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Server returned an error.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const messages = buffer.split('\n\n');
+    buffer = messages.pop() || '';
+
+    for (const message of messages) {
+      if (!message.trim()) continue;
+
+      const lines = message.split('\n');
+      let eventName = 'message';
+      let dataLine = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLine = line.slice(5).trim();
+      }
+
+      if (!dataLine) continue;
+
+      let payload;
+      try {
+        payload = JSON.parse(dataLine);
+      } catch {
+        continue;
+      }
+
+      if (eventName === 'refined-chunk') onChunk?.(payload.text);
+      else if (eventName === 'refined-done') onRefinedDone?.();
+      else if (eventName === 'changes') onChanges?.(payload.changes || []);
+      else if (eventName === 'done') onDone?.(payload);
+      else if (eventName === 'error') onError?.(payload.error || 'Unknown error');
+    }
+  }
+}
+
 /* ── App ─────────────────────────────────────────────────── */
 
 function App() {
@@ -492,6 +540,8 @@ function App() {
   const [category, setCategory] = useState('general');
   const [improvedPrompt, setImprovedPrompt] = useState('');
   const [changes, setChanges] = useState([]);
+  const [streaming, setStreaming] = useState(false);
+  const [refinedComplete, setRefinedComplete] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -502,34 +552,25 @@ function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
     if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch {
-        setHistory([]);
-      }
+      try { setHistory(JSON.parse(savedHistory)); }
+      catch { setHistory([]); }
     }
-
     const savedSettings = localStorage.getItem(STORAGE_SETTINGS);
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
         setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-      } catch {
-        setSettings(DEFAULT_SETTINGS);
-      }
+      } catch { setSettings(DEFAULT_SETTINGS); }
     }
-
     const savedStarred = localStorage.getItem(STORAGE_SAVED);
     if (savedStarred) {
-      try {
-        setSaved(JSON.parse(savedStarred));
-      } catch {
-        setSaved([]);
-      }
+      try { setSaved(JSON.parse(savedStarred)); }
+      catch { setSaved([]); }
     }
   }, []);
 
@@ -540,9 +581,7 @@ function App() {
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
   }
 
-  useEffect(() => {
-    autoResize();
-  }, [roughPrompt]);
+  useEffect(() => { autoResize(); }, [roughPrompt]);
 
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
@@ -569,10 +608,12 @@ function App() {
   }
 
   function loadFromHistory(entry) {
+    if (streaming) return;
     setRoughPrompt(entry.rough);
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
+    setRefinedComplete(true);
     setError('');
     setCurrentSavedId(null);
     if (conversationRef.current) {
@@ -581,23 +622,25 @@ function App() {
   }
 
   function loadFromTemplate(template) {
+    if (streaming) return;
     setRoughPrompt(template.rough);
     setCategory(template.category);
     setImprovedPrompt('');
     setChanges([]);
+    setRefinedComplete(false);
     setError('');
     setCurrentSavedId(null);
     setActiveView(null);
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 250);
+    setTimeout(() => { textareaRef.current?.focus(); }, 250);
   }
 
   function loadFromSaved(entry) {
+    if (streaming) return;
     setRoughPrompt(entry.rough);
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
+    setRefinedComplete(true);
     setError('');
     setCurrentSavedId(entry.id);
     if (conversationRef.current) {
@@ -611,15 +654,13 @@ function App() {
   }
 
   function toggleSaveCurrent() {
-    if (!improvedPrompt) return;
-
+    if (!improvedPrompt || !refinedComplete) return;
     if (currentSavedId) {
       const next = saved.filter((s) => s.id !== currentSavedId);
       persistSaved(next);
       setCurrentSavedId(null);
       return;
     }
-
     const newEntry = {
       id: makeId(),
       name: '',
@@ -635,9 +676,7 @@ function App() {
   }
 
   function renameSaved(id, newName) {
-    const next = saved.map((s) =>
-      s.id === id ? { ...s, name: newName } : s
-    );
+    const next = saved.map((s) => (s.id === id ? { ...s, name: newName } : s));
     persistSaved(next);
   }
 
@@ -645,9 +684,7 @@ function App() {
     if (!confirm('Remove this saved prompt?')) return;
     const next = saved.filter((s) => s.id !== id);
     persistSaved(next);
-    if (currentSavedId === id) {
-      setCurrentSavedId(null);
-    }
+    if (currentSavedId === id) setCurrentSavedId(null);
   }
 
   function toggleView(id) {
@@ -659,47 +696,72 @@ function App() {
   }
 
   async function handleImprove() {
-    if (!roughPrompt.trim()) return;
+    if (!roughPrompt.trim() || streaming) return;
 
     setLoading(true);
+    setStreaming(true);
     setError('');
     setImprovedPrompt('');
     setChanges([]);
+    setRefinedComplete(false);
     setCopied(false);
     setCurrentSavedId(null);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let accumulatedRefined = '';
+    let accumulatedChanges = [];
+
     try {
-      const response = await fetch(`${API_URL}/api/improve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: roughPrompt,
-          category,
-          model: settings.model,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Server returned an error.');
-      }
-
-      const data = await response.json();
-      setImprovedPrompt(data.improvedPrompt);
-      setChanges(data.changes || []);
-      saveToHistory({
-        rough: roughPrompt,
-        improved: data.improvedPrompt,
-        changes: data.changes || [],
-        category,
-        model: settings.model,
-        timestamp: Date.now(),
+      await streamRefinement({
+        url: `${API_URL}/api/improve`,
+        body: { prompt: roughPrompt, category, model: settings.model },
+        signal: controller.signal,
+        onChunk: (text) => {
+          if (loading) setLoading(false);
+          accumulatedRefined += text;
+          setImprovedPrompt(accumulatedRefined);
+        },
+        onRefinedDone: () => {
+          setRefinedComplete(true);
+        },
+        onChanges: (received) => {
+          accumulatedChanges = received;
+          setChanges(received);
+        },
+        onDone: () => {
+          if (accumulatedRefined) {
+            saveToHistory({
+              rough: roughPrompt,
+              improved: accumulatedRefined,
+              changes: accumulatedChanges,
+              category,
+              model: settings.model,
+              timestamp: Date.now(),
+            });
+          }
+        },
+        onError: (msg) => {
+          setError(msg);
+        },
       });
     } catch (err) {
-      setError(err.message || 'Something went wrong. Is the backend running?');
-      console.error(err);
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Something went wrong. Is the backend running?');
+        console.error(err);
+      }
     } finally {
       setLoading(false);
+      setStreaming(false);
+      setRefinedComplete(true);
+      abortRef.current = null;
+    }
+  }
+
+  function handleStop() {
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
   }
 
@@ -716,7 +778,7 @@ function App() {
     }
   }
 
-  const showEmpty = !improvedPrompt && !loading && !error;
+  const showEmpty = !improvedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
 
@@ -791,7 +853,7 @@ function App() {
               </div>
             )}
 
-            {loading && (
+            {loading && !improvedPrompt && (
               <div className="message">
                 <div className="message-header">
                   <span className="message-label">Refined prompt</span>
@@ -807,26 +869,37 @@ function App() {
               </div>
             )}
 
-            {improvedPrompt && !loading && (
+            {improvedPrompt && (
               <>
                 <div className="message">
                   <div className="message-header">
-                    <span className="message-label">Refined prompt</span>
+                    <span className="message-label">
+                      Refined prompt
+                      {streaming && <span className="streaming-pulse" />}
+                    </span>
                     <div className="message-actions">
                       <button
                         className={`icon-action ${isSaved ? 'saved' : ''}`}
                         onClick={toggleSaveCurrent}
+                        disabled={!refinedComplete || streaming}
                         aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
                         title={isSaved ? 'Remove from saved' : 'Save prompt'}
                       >
                         <StarIcon filled={isSaved} />
                       </button>
-                      <button className="copy-btn" onClick={handleCopy}>
+                      <button
+                        className="copy-btn"
+                        onClick={handleCopy}
+                        disabled={streaming}
+                      >
                         {copied ? 'Copied' : 'Copy'}
                       </button>
                     </div>
                   </div>
-                  <div className="message-body">{improvedPrompt}</div>
+                  <div className="message-body">
+                    {improvedPrompt}
+                    {streaming && <span className="caret" />}
+                  </div>
                 </div>
                 <ChangesPanel changes={changes} />
               </>
@@ -849,6 +922,7 @@ function App() {
                   type="button"
                   className={`chip ${category === c.id ? 'active' : ''}`}
                   onClick={() => setCategory(c.id)}
+                  disabled={streaming}
                 >
                   {c.label}
                 </button>
@@ -862,20 +936,32 @@ function App() {
               onKeyDown={handleKeyDown}
               placeholder="Type a rough prompt... (Cmd+Enter to submit)"
               rows={1}
+              disabled={streaming}
             />
 
             <div className="composer-actions">
               <span className="char-count">
                 {roughPrompt.length > 0 && `${roughPrompt.length} characters`}
               </span>
-              <button
-                className="send-btn"
-                onClick={handleImprove}
-                disabled={loading || !roughPrompt.trim()}
-                aria-label="Refine prompt"
-              >
-                <SendIcon />
-              </button>
+              {streaming ? (
+                <button
+                  className="send-btn stop"
+                  onClick={handleStop}
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                >
+                  <span className="stop-square" />
+                </button>
+              ) : (
+                <button
+                  className="send-btn"
+                  onClick={handleImprove}
+                  disabled={loading || !roughPrompt.trim()}
+                  aria-label="Refine prompt"
+                >
+                  <SendIcon />
+                </button>
+              )}
             </div>
           </div>
         </div>
