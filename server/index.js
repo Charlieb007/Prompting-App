@@ -42,7 +42,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model } = req.body;
+  const { prompt, category = 'general', model, previousRefined, feedback } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required.' });
@@ -50,8 +50,13 @@ app.post('/api/improve', async (req, res) => {
 
   const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
   const instruction = CATEGORY_INSTRUCTIONS[category] || CATEGORY_INSTRUCTIONS.general;
+  const isFollowUp = Boolean(previousRefined && feedback);
 
-  const systemPrompt = `You are an expert at prompt engineering. ${instruction}
+  const baseTask = isFollowUp
+    ? `You previously refined a prompt for the user. They have feedback on the refinement and want another iteration. Apply their feedback while keeping the prompt clear, specific, and well-structured. ${instruction}`
+    : `You are an expert at prompt engineering. ${instruction}`;
+
+  const systemPrompt = `${baseTask}
 
 Your response has two parts, separated by a special delimiter:
 
@@ -59,7 +64,7 @@ PART 1: The refined prompt itself, written as plain text. No preamble, no markdo
 
 PART 2: A line containing only the delimiter "${DELIMITER}" on its own.
 
-PART 3: A JSON array describing 3-6 of the most impactful changes you made. Format:
+PART 3: A JSON array describing 3-6 of the most impactful changes you made${isFollowUp ? ' in this iteration' : ''}. Format:
 [
   { "title": "Short label (3-6 words)", "explanation": "One concise sentence." },
   { "title": "Another change", "explanation": "Another concise explanation." }
@@ -68,12 +73,26 @@ PART 3: A JSON array describing 3-6 of the most impactful changes you made. Form
 Rules:
 - Always emit PART 1 first, then the delimiter, then the JSON array
 - Each change describes ONE distinct improvement
-- Titles are short (3-6 words), like "Specified the audience" or "Added output format"
+- Titles are short (3-6 words)
 - Explanations are ONE concise sentence
 - Order changes from most impactful to least
-- If the original prompt was already well-formed, include fewer changes (even 1-2)
+- If few changes were needed, include fewer (even 1-2)
 - The JSON must be valid and parseable
 - Do not wrap the JSON in markdown code fences`;
+
+  const userContent = isFollowUp
+    ? `Original rough prompt:
+${prompt}
+
+Previous refined version:
+${previousRefined}
+
+User feedback for this iteration:
+${feedback}
+
+Produce a new refined version that addresses the feedback.`
+    : `Rough prompt:
+${prompt}`;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -89,9 +108,7 @@ Rules:
       model: safeModel,
       max_tokens: 1500,
       system: systemPrompt,
-      messages: [
-        { role: 'user', content: `Rough prompt:\n${prompt}` },
-      ],
+      messages: [{ role: 'user', content: userContent }],
     });
 
     let buffer = '';

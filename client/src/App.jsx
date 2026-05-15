@@ -13,6 +13,13 @@ const CATEGORIES = [
   { id: 'brainstorm', label: 'Brainstorm' },
 ];
 
+const FOLLOWUP_PRESETS = [
+  { id: 'shorter', label: 'Shorter', feedback: 'Make this significantly shorter and more direct, keeping only the most essential parts.' },
+  { id: 'formal', label: 'More formal', feedback: 'Adjust the tone to be more formal and professional.' },
+  { id: 'simpler', label: 'Simpler', feedback: 'Simplify the language. Use plainer words and shorter sentences.' },
+  { id: 'examples', label: 'Add examples', feedback: 'Add 1-2 concrete examples to illustrate what good output would look like.' },
+];
+
 const STORAGE_HISTORY = 'prompt-improver-history';
 const STORAGE_SETTINGS = 'prompt-improver-settings';
 const STORAGE_SAVED = 'prompt-improver-saved';
@@ -152,6 +159,15 @@ function TrashIcon() {
   );
 }
 
+function ArrowRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
 const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'saved', label: 'Saved prompts', icon: StarIcon },
@@ -160,7 +176,7 @@ const RAIL_ITEMS = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
-/* ── Drawer views (unchanged from prior version) ─────────── */
+/* ── Drawer views ────────────────────────────────────────── */
 
 function HistoryView({ history, onLoad, onClear }) {
   return (
@@ -181,6 +197,7 @@ function HistoryView({ history, onLoad, onClear }) {
                 <button className="history-item" onClick={() => onLoad(entry)}>
                   <div className="history-row">
                     <span className="history-cat">{entry.category}</span>
+                    {entry.isFollowUp && <span className="history-followup">follow-up</span>}
                     <span className="history-time">{formatTime(entry.timestamp)}</span>
                   </div>
                   <span className="history-text">{entry.rough}</span>
@@ -475,6 +492,73 @@ function ChangesPanel({ changes }) {
   );
 }
 
+/* ── Follow-up panel ─────────────────────────────────────── */
+
+function FollowUpPanel({ disabled, onSubmit }) {
+  const [feedback, setFeedback] = useState('');
+
+  function handlePreset(preset) {
+    if (disabled) return;
+    onSubmit(preset.feedback);
+  }
+
+  function handleSubmit(e) {
+    e?.preventDefault();
+    if (disabled || !feedback.trim()) return;
+    onSubmit(feedback.trim());
+    setFeedback('');
+  }
+
+  function handleKeyDown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }
+
+  return (
+    <div className="followup">
+      <div className="followup-header">
+        <span className="followup-label">Refine further</span>
+      </div>
+      <div className="followup-presets">
+        {FOLLOWUP_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            className="followup-preset"
+            onClick={() => handlePreset(p)}
+            disabled={disabled}
+            title={p.feedback}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="followup-input-row">
+        <input
+          type="text"
+          className="followup-input"
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Or describe what to change..."
+          disabled={disabled}
+          maxLength={300}
+        />
+        <button
+          className="followup-submit"
+          onClick={handleSubmit}
+          disabled={disabled || !feedback.trim()}
+          aria-label="Apply feedback"
+          title="Apply feedback"
+        >
+          <ArrowRightIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ── SSE stream parser ───────────────────────────────────── */
 
 async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onDone, onError, signal }) {
@@ -695,17 +779,20 @@ function App() {
     setActiveView(activeView === null ? 'history' : null);
   }
 
-  async function handleImprove() {
+  async function runRefinement({ feedback = null } = {}) {
     if (!roughPrompt.trim() || streaming) return;
 
     setLoading(true);
     setStreaming(true);
     setError('');
-    setImprovedPrompt('');
-    setChanges([]);
     setRefinedComplete(false);
     setCopied(false);
     setCurrentSavedId(null);
+
+    const previousRefined = feedback ? improvedPrompt : null;
+
+    setImprovedPrompt('');
+    setChanges([]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -716,16 +803,20 @@ function App() {
     try {
       await streamRefinement({
         url: `${API_URL}/api/improve`,
-        body: { prompt: roughPrompt, category, model: settings.model },
+        body: {
+          prompt: roughPrompt,
+          category,
+          model: settings.model,
+          previousRefined: previousRefined || undefined,
+          feedback: feedback || undefined,
+        },
         signal: controller.signal,
         onChunk: (text) => {
           if (loading) setLoading(false);
           accumulatedRefined += text;
           setImprovedPrompt(accumulatedRefined);
         },
-        onRefinedDone: () => {
-          setRefinedComplete(true);
-        },
+        onRefinedDone: () => { setRefinedComplete(true); },
         onChanges: (received) => {
           accumulatedChanges = received;
           setChanges(received);
@@ -739,12 +830,12 @@ function App() {
               category,
               model: settings.model,
               timestamp: Date.now(),
+              isFollowUp: Boolean(feedback),
+              feedback: feedback || undefined,
             });
           }
         },
-        onError: (msg) => {
-          setError(msg);
-        },
+        onError: (msg) => { setError(msg); },
       });
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -759,10 +850,16 @@ function App() {
     }
   }
 
+  function handleImprove() {
+    runRefinement();
+  }
+
+  function handleFollowUp(feedback) {
+    runRefinement({ feedback });
+  }
+
   function handleStop() {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (abortRef.current) abortRef.current.abort();
   }
 
   async function handleCopy() {
@@ -781,6 +878,7 @@ function App() {
   const showEmpty = !improvedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
+  const showFollowUp = Boolean(improvedPrompt) && refinedComplete;
 
   return (
     <div className="shell">
@@ -902,6 +1000,12 @@ function App() {
                   </div>
                 </div>
                 <ChangesPanel changes={changes} />
+                {showFollowUp && (
+                  <FollowUpPanel
+                    disabled={streaming}
+                    onSubmit={handleFollowUp}
+                  />
+                )}
               </>
             )}
 
