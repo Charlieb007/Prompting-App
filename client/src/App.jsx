@@ -15,6 +15,7 @@ const CATEGORIES = [
 
 const STORAGE_HISTORY = 'prompt-improver-history';
 const STORAGE_SETTINGS = 'prompt-improver-settings';
+const STORAGE_SAVED = 'prompt-improver-saved';
 const MAX_HISTORY = 20;
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
@@ -43,9 +44,8 @@ function formatTime(timestamp) {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function categoryLabel(id) {
-  const cat = CATEGORIES.find((c) => c.id === id);
-  return cat ? cat.label : id;
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /* ── Icon components ─────────────────────────────────────── */
@@ -76,6 +76,14 @@ function TemplatesIcon() {
       <rect x="14" y="3" width="7" height="7" rx="1.5" />
       <rect x="3" y="14" width="7" height="7" rx="1.5" />
       <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function StarIcon({ filled = false }) {
+  return (
+    <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );
 }
@@ -124,8 +132,29 @@ function SparkIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
 const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
+  { id: 'saved', label: 'Saved prompts', icon: StarIcon },
   { id: 'templates', label: 'Templates', icon: TemplatesIcon },
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -162,6 +191,117 @@ function HistoryView({ history, onLoad, onClear }) {
         )}
       </div>
     </>
+  );
+}
+
+function SavedView({ saved, onLoad, onRename, onRemove }) {
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Saved</h3>
+      </div>
+      <div className="drawer-body">
+        {saved.length === 0 ? (
+          <div className="drawer-empty">
+            Star a refined prompt to save it here for later.
+          </div>
+        ) : (
+          <ul className="saved-list">
+            {saved.map((entry) => (
+              <SavedItem
+                key={entry.id}
+                entry={entry}
+                onLoad={onLoad}
+                onRename={onRename}
+                onRemove={onRemove}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+function SavedItem({ entry, onLoad, onRename, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(entry.name || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  function commitName() {
+    const trimmed = draftName.trim();
+    onRename(entry.id, trimmed);
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setDraftName(entry.name || '');
+    setEditing(false);
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  }
+
+  const displayName = entry.name || entry.rough;
+
+  return (
+    <li className="saved-item">
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="saved-rename-input"
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commitName}
+          placeholder="Name this prompt"
+          maxLength={80}
+        />
+      ) : (
+        <button className="saved-main" onClick={() => onLoad(entry)}>
+          <div className="saved-row">
+            <span className="saved-cat">{entry.category}</span>
+            <span className="saved-time">{formatTime(entry.savedAt)}</span>
+          </div>
+          <span className="saved-name">{displayName}</span>
+          {entry.name && (
+            <span className="saved-preview">{entry.rough}</span>
+          )}
+        </button>
+      )}
+      <div className="saved-actions">
+        <button
+          className="saved-action-btn"
+          onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+          aria-label="Rename"
+          title="Rename"
+        >
+          <PencilIcon />
+        </button>
+        <button
+          className="saved-action-btn"
+          onClick={(e) => { e.stopPropagation(); onRemove(entry.id); }}
+          aria-label="Remove"
+          title="Remove"
+        >
+          <TrashIcon />
+        </button>
+      </div>
+    </li>
   );
 }
 
@@ -320,8 +460,6 @@ function SettingsView({ settings, onChange, onReset }) {
   );
 }
 
-/* ── Changes panel (the teaching layer) ──────────────────── */
-
 function ChangesPanel({ changes }) {
   if (!changes || changes.length === 0) return null;
 
@@ -358,6 +496,8 @@ function App() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState([]);
+  const [saved, setSaved] = useState([]);
+  const [currentSavedId, setCurrentSavedId] = useState(null);
   const [activeView, setActiveView] = useState('history');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const textareaRef = useRef(null);
@@ -380,6 +520,15 @@ function App() {
         setSettings({ ...DEFAULT_SETTINGS, ...parsed });
       } catch {
         setSettings(DEFAULT_SETTINGS);
+      }
+    }
+
+    const savedStarred = localStorage.getItem(STORAGE_SAVED);
+    if (savedStarred) {
+      try {
+        setSaved(JSON.parse(savedStarred));
+      } catch {
+        setSaved([]);
       }
     }
   }, []);
@@ -425,6 +574,7 @@ function App() {
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
     setError('');
+    setCurrentSavedId(null);
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -436,10 +586,68 @@ function App() {
     setImprovedPrompt('');
     setChanges([]);
     setError('');
+    setCurrentSavedId(null);
     setActiveView(null);
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 250);
+  }
+
+  function loadFromSaved(entry) {
+    setRoughPrompt(entry.rough);
+    setCategory(entry.category);
+    setImprovedPrompt(entry.improved);
+    setChanges(entry.changes || []);
+    setError('');
+    setCurrentSavedId(entry.id);
+    if (conversationRef.current) {
+      conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function persistSaved(next) {
+    setSaved(next);
+    localStorage.setItem(STORAGE_SAVED, JSON.stringify(next));
+  }
+
+  function toggleSaveCurrent() {
+    if (!improvedPrompt) return;
+
+    if (currentSavedId) {
+      const next = saved.filter((s) => s.id !== currentSavedId);
+      persistSaved(next);
+      setCurrentSavedId(null);
+      return;
+    }
+
+    const newEntry = {
+      id: makeId(),
+      name: '',
+      rough: roughPrompt,
+      improved: improvedPrompt,
+      changes,
+      category,
+      model: settings.model,
+      savedAt: Date.now(),
+    };
+    persistSaved([newEntry, ...saved]);
+    setCurrentSavedId(newEntry.id);
+  }
+
+  function renameSaved(id, newName) {
+    const next = saved.map((s) =>
+      s.id === id ? { ...s, name: newName } : s
+    );
+    persistSaved(next);
+  }
+
+  function removeSaved(id) {
+    if (!confirm('Remove this saved prompt?')) return;
+    const next = saved.filter((s) => s.id !== id);
+    persistSaved(next);
+    if (currentSavedId === id) {
+      setCurrentSavedId(null);
+    }
   }
 
   function toggleView(id) {
@@ -458,6 +666,7 @@ function App() {
     setImprovedPrompt('');
     setChanges([]);
     setCopied(false);
+    setCurrentSavedId(null);
 
     try {
       const response = await fetch(`${API_URL}/api/improve`, {
@@ -509,6 +718,7 @@ function App() {
 
   const showEmpty = !improvedPrompt && !loading && !error;
   const drawerOpen = activeView !== null;
+  const isSaved = Boolean(currentSavedId);
 
   return (
     <div className="shell">
@@ -545,6 +755,14 @@ function App() {
         <div className="drawer-inner">
           {activeView === 'history' && (
             <HistoryView history={history} onLoad={loadFromHistory} onClear={clearHistory} />
+          )}
+          {activeView === 'saved' && (
+            <SavedView
+              saved={saved}
+              onLoad={loadFromSaved}
+              onRename={renameSaved}
+              onRemove={removeSaved}
+            />
           )}
           {activeView === 'templates' && (
             <TemplatesView onSelect={loadFromTemplate} />
@@ -594,9 +812,19 @@ function App() {
                 <div className="message">
                   <div className="message-header">
                     <span className="message-label">Refined prompt</span>
-                    <button className="copy-btn" onClick={handleCopy}>
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
+                    <div className="message-actions">
+                      <button
+                        className={`icon-action ${isSaved ? 'saved' : ''}`}
+                        onClick={toggleSaveCurrent}
+                        aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
+                        title={isSaved ? 'Remove from saved' : 'Save prompt'}
+                      >
+                        <StarIcon filled={isSaved} />
+                      </button>
+                      <button className="copy-btn" onClick={handleCopy}>
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
                   </div>
                   <div className="message-body">{improvedPrompt}</div>
                 </div>

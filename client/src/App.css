@@ -203,11 +203,149 @@ button {
   line-height: 1.5;
 }
 
+/* ── Saved prompts view ──────────────────────────────────── */
+
+.saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.saved-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: var(--r-md);
+  transition: background 0.12s ease;
+}
+
+.saved-item:hover {
+  background: var(--bg-subtle);
+}
+
+.saved-item:hover .saved-actions {
+  opacity: 1;
+}
+
+.saved-main {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  padding-right: 60px;
+  text-align: left;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.saved-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saved-cat {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-bg);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.saved-time {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.saved-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.45;
+}
+
+.saved-preview {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  line-height: 1.45;
+  font-style: italic;
+}
+
+.saved-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.saved-action-btn {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+
+.saved-action-btn:hover {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+}
+
+.saved-action-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.saved-rename-input {
+  flex: 1;
+  margin: 6px 8px;
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  border: 0.5px solid var(--accent);
+  border-radius: var(--r-md);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
 /* ── Templates view ──────────────────────────────────────── */
 
-.templates-body {
-  padding: 14px 14px 24px;
-}
+.templates-body { padding: 14px 14px 24px; }
 
 .templates-intro {
   font-size: 12px;
@@ -216,13 +354,8 @@ button {
   margin: 0 4px 16px;
 }
 
-.templates-group {
-  margin-bottom: 18px;
-}
-
-.templates-group:last-child {
-  margin-bottom: 0;
-}
+.templates-group { margin-bottom: 18px; }
+.templates-group:last-child { margin-bottom: 0; }
 
 .templates-group-label {
   font-size: 10px;
@@ -607,6 +740,12 @@ button {
   margin-bottom: 10px;
 }
 
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .message-label {
   font-size: 11px;
   font-weight: 500;
@@ -624,6 +763,40 @@ button {
   line-height: 1.7;
   color: var(--text-primary);
   white-space: pre-wrap;
+}
+
+.icon-action {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-md);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+
+.icon-action:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.icon-action.saved {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: rgba(205, 111, 71, 0.32);
+}
+
+.icon-action.saved:hover {
+  background: var(--accent-bg);
+  color: var(--accent-hover);
+}
+
+.icon-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 .thinking-block {
@@ -716,7 +889,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  counter-reset: change-counter;
 }
 
 .changes-item {

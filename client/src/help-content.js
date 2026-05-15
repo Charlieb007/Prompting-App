@@ -12,11 +12,26 @@ export const HELP_CONTENT = [
     title: 'Step-by-step tutorial',
     body: [
       { type: 'step', n: 1, title: 'Pick a category', text: 'Above the input area, you\'ll see five category chips. Click the one that matches your task. Or pick a template (next step) which sets the category for you.' },
-      { type: 'step', n: 2, title: 'Type a rough prompt — or use a template', text: 'Don\'t worry about being polished. "Write me an email about a project delay" is enough. If you\'re not sure what to type, open the Templates panel from the left rail and pick a starting point.' },
+      { type: 'step', n: 2, title: 'Type a rough prompt — or use a template', text: 'Don\'t worry about being polished. "Write me an email about a project delay" is enough. If you\'re not sure what to type, open Templates from the left rail and pick a starting point.' },
       { type: 'step', n: 3, title: 'Submit', text: 'Click the arrow button on the right, or press Cmd+Enter (Ctrl+Enter on Windows/Linux). The refined prompt will appear within a few seconds.' },
-      { type: 'step', n: 4, title: 'Read what changed', text: 'Below the refined prompt, you\'ll see a "What changed" panel listing the specific improvements that were made and why. This is the teaching part.' },
-      { type: 'step', n: 5, title: 'Copy and use it', text: 'Click the Copy button at the top of the refined prompt. Paste it into Claude, ChatGPT, or wherever you\'re working.' },
-      { type: 'step', n: 6, title: 'Revisit history', text: 'Every refinement is automatically saved. Click the History icon in the left rail to see your recent prompts.' },
+      { type: 'step', n: 4, title: 'Read what changed', text: 'Below the refined prompt, you\'ll see a "What changed" panel listing the specific improvements that were made and why.' },
+      { type: 'step', n: 5, title: 'Copy or save it', text: 'Click the Copy button to copy the refined prompt. Or click the star icon to save it permanently to your Saved prompts.' },
+      { type: 'step', n: 6, title: 'Revisit later', text: 'History keeps your last 20 refinements automatically. Saved prompts keeps any you\'ve starred indefinitely. Both live in the left rail.' },
+    ],
+  },
+  {
+    id: 'saved',
+    title: 'Saved prompts',
+    body: [
+      { type: 'text', text: 'History is automatic but rolling — only your last 20 refinements stay. Saved prompts are the ones you want to keep permanently.' },
+      { type: 'text', text: 'To save a refinement, click the star icon at the top right of any refined prompt. The icon fills in to confirm it\'s saved. Click again to unsave.' },
+      { type: 'list', items: [
+        { label: 'View saved prompts', text: 'Open Saved from the left rail (the star icon). All your saved prompts appear there, newest first.' },
+        { label: 'Rename them', text: 'Hover any saved prompt to reveal Rename and Remove buttons. Click the pencil to give it a memorable name like "Weekly status update" or "Client follow-up."' },
+        { label: 'Reload a saved prompt', text: 'Click any saved prompt to load it into the composer along with its refined version and "What changed" panel. Useful for reviewing or building on previous work.' },
+        { label: 'Remove when done', text: 'Click the trash icon on any saved prompt to remove it. There\'s no quota, but a tidy list is easier to scan.' },
+      ]},
+      { type: 'note', text: 'Saved prompts are stored locally in your browser, separate from history. Clearing browser data will remove them. There\'s currently no cloud sync.' },
     ],
   },
   {
@@ -24,13 +39,12 @@ export const HELP_CONTENT = [
     title: 'Templates',
     body: [
       { type: 'text', text: 'If you\'re not sure where to start, open Templates from the left rail. You\'ll find common scenarios grouped by category — drafting a difficult email, writing a function, summarizing research, brainstorming ideas, and more.' },
-      { type: 'text', text: 'Click any template to load it into the composer. The rough prompt and matching category are filled in for you. You can edit the rough prompt before submitting or just hit submit to see what the refined version looks like.' },
+      { type: 'text', text: 'Click any template to load it into the composer. The rough prompt and matching category are filled in for you. You can edit before submitting or just hit submit to see what the refined version looks like.' },
       { type: 'list', items: [
         { label: 'Edit before submitting', text: 'Templates are starting points, not exact prompts. Replace placeholders with your actual situation for better results.' },
         { label: 'Compare categories', text: 'Try the same template under different categories to see how the refinement changes.' },
-        { label: 'Use them to learn', text: 'After refining a template, study the "What changed" panel — it shows the patterns that turn a generic ask into a strong prompt.' },
+        { label: 'Save the good ones', text: 'After refining a template and getting a good result, star it. Now you have your own customized version in Saved prompts.' },
       ]},
-      { type: 'note', text: 'Templates are static for now — you can\'t create your own. A "Saved prompts" feature is coming soon where you\'ll be able to star any refinement and reuse it later.' },
     ],
   },
   {
@@ -44,7 +58,6 @@ export const HELP_CONTENT = [
         { label: 'Compare across categories', text: 'Try the same rough prompt with different categories. The differences in what changes tell you a lot about each category\'s philosophy.' },
         { label: 'Notice the empty cases', text: 'If a prompt was already well-formed, the app may show only 1-2 changes. That\'s a signal you\'re writing good prompts already.' },
       ]},
-      { type: 'note', text: 'The "What changed" list is generated by the AI alongside the refined prompt. Like the refinement itself, the explanations reflect general prompting best practices but may occasionally be subjective.' },
     ],
   },
   {
@@ -67,7 +80,7 @@ export const HELP_CONTENT = [
     body: [
       { type: 'text', text: 'Your last 20 refinements are saved locally in your browser. They survive page refreshes and stay private to your device.' },
       { type: 'text', text: 'Open history from the left rail. Click any entry to reload both the rough prompt and its refined version, along with the "What changed" panel.' },
-      { type: 'note', text: 'Clearing your browser data also clears history. If you want to keep a refined prompt long-term, copy it somewhere safe.' },
+      { type: 'note', text: 'History is a rolling list — older entries drop off as new ones come in. To keep a prompt permanently, star it to add it to Saved prompts.' },
     ],
   },
   {
@@ -91,6 +104,8 @@ export const HELP_CONTENT = [
     body: [
       { type: 'list', items: [
         { label: 'Cmd+Enter', text: 'Submit the prompt (Ctrl+Enter on Windows/Linux).' },
+        { label: 'Enter (in rename)', text: 'Save a new name for a saved prompt.' },
+        { label: 'Escape (in rename)', text: 'Cancel renaming and keep the previous name.' },
       ]},
     ],
   },
@@ -115,7 +130,7 @@ export const HELP_CONTENT = [
         { label: '"Something went wrong"', text: 'Usually means the backend server isn\'t running, or your API key is invalid.' },
         { label: '"Unexpected response format"', text: 'Occasionally the AI returns something we can\'t parse. Just try again — almost always works on retry.' },
         { label: 'Slow responses', text: 'Each refinement calls the AI over the network. 2-5 seconds is normal. Opus models can take longer for complex prompts.' },
-        { label: 'History disappeared', text: 'Most likely your browser cleared its local data.' },
+        { label: 'History/Saved disappeared', text: 'Most likely your browser cleared its local data.' },
         { label: 'Model error', text: 'If a specific Claude model fails, switch back to the default in Settings.' },
       ]},
     ],
