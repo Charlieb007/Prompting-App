@@ -20,6 +20,14 @@ const FOLLOWUP_PRESETS = [
   { id: 'examples', label: 'Add examples', feedback: 'Add 1-2 concrete examples to illustrate what good output would look like.' },
 ];
 
+const SCORE_DIMENSIONS = [
+  { id: 'specificity', label: 'Specificity', description: 'Concreteness and detail of the request.' },
+  { id: 'audience', label: 'Audience', description: 'Who the response is for and what they need.' },
+  { id: 'format', label: 'Format', description: 'Whether the desired output format is specified.' },
+  { id: 'constraints', label: 'Constraints', description: 'Limits, exclusions, requirements stated.' },
+  { id: 'examples', label: 'Examples', description: 'Examples provided or step-by-step reasoning requested.' },
+];
+
 const STORAGE_HISTORY = 'prompt-improver-history';
 const STORAGE_SETTINGS = 'prompt-improver-settings';
 const STORAGE_SAVED = 'prompt-improver-saved';
@@ -53,6 +61,13 @@ function formatTime(timestamp) {
 
 function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function averageScore(scoreSet) {
+  if (!scoreSet) return null;
+  const values = SCORE_DIMENSIONS.map((d) => scoreSet[d.id]?.score).filter((s) => typeof s === 'number');
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
 /* ── Icons ───────────────────────────────────────────────── */
@@ -135,6 +150,15 @@ function SparkIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3 L13.5 9 L19 10.5 L13.5 12 L12 18 L10.5 12 L5 10.5 L10.5 9 Z" />
+    </svg>
+  );
+}
+
+function GaugeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 14l4-4" />
+      <path d="M3.34 17a10 10 0 1 1 17.32 0" />
     </svg>
   );
 }
@@ -492,6 +516,183 @@ function ChangesPanel({ changes }) {
   );
 }
 
+/* ── Radar chart ─────────────────────────────────────────── */
+
+function RadarChart({ scoreSet, variant }) {
+  // variant: 'rough' or 'refined' — controls styling
+  const cx = 110;
+  const cy = 110;
+  const maxR = 78;
+
+  const angles = SCORE_DIMENSIONS.map((_, i) =>
+    -Math.PI / 2 + (i * 2 * Math.PI) / SCORE_DIMENSIONS.length
+  );
+
+  function pointAt(score, i) {
+    const clamped = Math.max(0, Math.min(5, score)) / 5;
+    const r = clamped * maxR;
+    return [cx + r * Math.cos(angles[i]), cy + r * Math.sin(angles[i])];
+  }
+
+  function labelPosition(i) {
+    const r = maxR + 22;
+    return [cx + r * Math.cos(angles[i]), cy + r * Math.sin(angles[i])];
+  }
+
+  function ringPoints(level) {
+    return angles
+      .map((a) => {
+        const r = (level / 5) * maxR;
+        return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+      })
+      .join(' ');
+  }
+
+  const polygon = SCORE_DIMENSIONS
+    .map((d, i) => pointAt(scoreSet?.[d.id]?.score ?? 0, i))
+    .map(([x, y]) => `${x},${y}`)
+    .join(' ');
+
+  return (
+    <svg viewBox="0 0 220 220" className={`radar-chart radar-${variant}`} aria-hidden="true">
+      {[1, 2, 3, 4, 5].map((level) => (
+        <polygon
+          key={level}
+          points={ringPoints(level)}
+          className={`radar-ring ${level === 5 ? 'radar-ring-outer' : ''}`}
+        />
+      ))}
+
+      {angles.map((a, i) => (
+        <line
+          key={i}
+          x1={cx}
+          y1={cy}
+          x2={cx + maxR * Math.cos(a)}
+          y2={cy + maxR * Math.sin(a)}
+          className="radar-spoke"
+        />
+      ))}
+
+      <polygon points={polygon} className={`radar-polygon radar-polygon-${variant}`} />
+
+      {SCORE_DIMENSIONS.map((d, i) => {
+        const score = scoreSet?.[d.id]?.score ?? 0;
+        const [x, y] = pointAt(score, i);
+        return <circle key={d.id} cx={x} cy={y} r="3" className={`radar-point radar-point-${variant}`} />;
+      })}
+
+      {SCORE_DIMENSIONS.map((d, i) => {
+        const [x, y] = labelPosition(i);
+        const score = scoreSet?.[d.id]?.score ?? 0;
+        return (
+          <g key={d.id}>
+            <text x={x} y={y - 4} className="radar-label" textAnchor="middle" dominantBaseline="middle">
+              {d.label}
+            </text>
+            <text x={x} y={y + 9} className={`radar-score radar-score-${variant}`} textAnchor="middle" dominantBaseline="middle">
+              {score}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ── Scores panel ────────────────────────────────────────── */
+
+function ScoresPanel({ scores }) {
+  if (!scores || !scores.refined) return null;
+
+  const roughAvg = averageScore(scores.rough);
+  const refinedAvg = averageScore(scores.refined);
+  const hasRough = scores.rough && roughAvg !== null;
+  const lift = hasRough && refinedAvg !== null ? refinedAvg - roughAvg : null;
+
+  return (
+    <div className="scores">
+      <div className="scores-header">
+        <span className="scores-icon"><GaugeIcon /></span>
+        <span className="scores-label">Quality score</span>
+        <div className="scores-summary">
+          {hasRough && (
+            <>
+              <span className="scores-summary-rough">{roughAvg.toFixed(1)}</span>
+              <span className="scores-summary-arrow">→</span>
+            </>
+          )}
+          <span className="scores-summary-refined">{refinedAvg.toFixed(1)}</span>
+          <span className="scores-summary-max">/5</span>
+          {lift !== null && lift > 0 && (
+            <span className="scores-summary-lift">+{lift.toFixed(1)}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="scores-charts">
+        {hasRough && (
+          <div className="scores-chart-block">
+            <div className="scores-chart-caption">
+              <span className="scores-chart-title scores-chart-title-rough">Your rough prompt</span>
+              <span className="scores-chart-avg">{roughAvg.toFixed(1)}/5</span>
+            </div>
+            <RadarChart scoreSet={scores.rough} variant="rough" />
+          </div>
+        )}
+        <div className="scores-chart-block">
+          <div className="scores-chart-caption">
+            <span className="scores-chart-title scores-chart-title-refined">Refined version</span>
+            <span className="scores-chart-avg">{refinedAvg.toFixed(1)}/5</span>
+          </div>
+          <RadarChart scoreSet={scores.refined} variant="refined" />
+        </div>
+      </div>
+
+      <ul className="scores-list">
+        {SCORE_DIMENSIONS.map((d) => {
+          const refined = scores.refined?.[d.id];
+          const rough = scores.rough?.[d.id];
+          if (!refined) return null;
+          const dimLift = rough && typeof rough.score === 'number' && typeof refined.score === 'number'
+            ? refined.score - rough.score
+            : null;
+          return (
+            <li key={d.id} className="scores-item">
+              <div className="scores-item-head">
+                <span className="scores-item-label">{d.label}</span>
+                <span className="scores-item-values">
+                  {rough && typeof rough.score === 'number' && (
+                    <>
+                      <span className="scores-item-rough-val">{rough.score}</span>
+                      <span className="scores-item-arrow">→</span>
+                    </>
+                  )}
+                  <span className="scores-item-refined-val">{refined.score}</span>
+                  <span className="scores-item-max">/5</span>
+                  {dimLift !== null && dimLift > 0 && (
+                    <span className="scores-item-lift">+{dimLift}</span>
+                  )}
+                </span>
+              </div>
+              {rough?.rationale && (
+                <div className="scores-item-rationale-row">
+                  <span className="scores-item-tag scores-item-tag-rough">Rough</span>
+                  <span className="scores-item-rationale scores-item-rationale-rough">{rough.rationale}</span>
+                </div>
+              )}
+              <div className="scores-item-rationale-row">
+                <span className="scores-item-tag scores-item-tag-refined">Refined</span>
+                <span className="scores-item-rationale">{refined.rationale}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 /* ── Follow-up panel ─────────────────────────────────────── */
 
 function FollowUpPanel({ disabled, onSubmit }) {
@@ -561,7 +762,7 @@ function FollowUpPanel({ disabled, onSubmit }) {
 
 /* ── SSE stream parser ───────────────────────────────────── */
 
-async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onDone, onError, signal }) {
+async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onScores, onDone, onError, signal }) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -611,6 +812,7 @@ async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, 
       if (eventName === 'refined-chunk') onChunk?.(payload.text);
       else if (eventName === 'refined-done') onRefinedDone?.();
       else if (eventName === 'changes') onChanges?.(payload.changes || []);
+      else if (eventName === 'scores') onScores?.(payload.scores || null);
       else if (eventName === 'done') onDone?.(payload);
       else if (eventName === 'error') onError?.(payload.error || 'Unknown error');
     }
@@ -624,6 +826,7 @@ function App() {
   const [category, setCategory] = useState('general');
   const [improvedPrompt, setImprovedPrompt] = useState('');
   const [changes, setChanges] = useState([]);
+  const [scores, setScores] = useState(null);
   const [streaming, setStreaming] = useState(false);
   const [refinedComplete, setRefinedComplete] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -697,6 +900,7 @@ function App() {
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
+    setScores(entry.scores || null);
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(null);
@@ -711,6 +915,7 @@ function App() {
     setCategory(template.category);
     setImprovedPrompt('');
     setChanges([]);
+    setScores(null);
     setRefinedComplete(false);
     setError('');
     setCurrentSavedId(null);
@@ -724,6 +929,7 @@ function App() {
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
+    setScores(entry.scores || null);
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(entry.id);
@@ -751,6 +957,7 @@ function App() {
       rough: roughPrompt,
       improved: improvedPrompt,
       changes,
+      scores,
       category,
       model: settings.model,
       savedAt: Date.now(),
@@ -793,12 +1000,14 @@ function App() {
 
     setImprovedPrompt('');
     setChanges([]);
+    setScores(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     let accumulatedRefined = '';
     let accumulatedChanges = [];
+    let accumulatedScores = null;
 
     try {
       await streamRefinement({
@@ -821,12 +1030,17 @@ function App() {
           accumulatedChanges = received;
           setChanges(received);
         },
+        onScores: (received) => {
+          accumulatedScores = received;
+          setScores(received);
+        },
         onDone: () => {
           if (accumulatedRefined) {
             saveToHistory({
               rough: roughPrompt,
               improved: accumulatedRefined,
               changes: accumulatedChanges,
+              scores: accumulatedScores,
               category,
               model: settings.model,
               timestamp: Date.now(),
@@ -1000,6 +1214,7 @@ function App() {
                   </div>
                 </div>
                 <ChangesPanel changes={changes} />
+                <ScoresPanel scores={scores} />
                 {showFollowUp && (
                   <FollowUpPanel
                     disabled={streaming}
