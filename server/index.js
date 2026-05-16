@@ -56,26 +56,13 @@ For each dimension, return an integer score 1-5 and a single concise sentence ra
 
 const DELIMITER = '<<<CHANGES_JSON>>>';
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model, previousRefined, feedback } = req.body;
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Prompt is required.' });
-  }
-
-  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
+function buildSystemPrompt(category, isFollowUp) {
   const instruction = CATEGORY_INSTRUCTIONS[category] || CATEGORY_INSTRUCTIONS.general;
-  const isFollowUp = Boolean(previousRefined && feedback);
-
   const baseTask = isFollowUp
     ? `You previously refined a prompt for the user. They have feedback on the refinement and want another iteration. Apply their feedback while keeping the prompt clear, specific, and well-structured. ${instruction}`
     : `You are an expert at prompt engineering. ${instruction}`;
 
-  const systemPrompt = `${baseTask}
+  return `${baseTask}
 
 Your response has two parts, separated by a special delimiter:
 
@@ -124,9 +111,11 @@ Rules for the scores object:
 ${SCORING_RUBRIC}
 
 The JSON must be valid and parseable. Do not wrap it in markdown code fences.`;
+}
 
-  const userContent = isFollowUp
-    ? `Original rough prompt:
+function buildUserContent({ prompt, isFollowUp, previousRefined, feedback }) {
+  if (isFollowUp) {
+    return `Original rough prompt:
 ${prompt}
 
 Previous refined version:
@@ -135,9 +124,111 @@ ${previousRefined}
 User feedback for this iteration:
 ${feedback}
 
-Produce a new refined version that addresses the feedback. Score the original rough prompt and your new refined version.`
-    : `Rough prompt:
+Produce a new refined version that addresses the feedback. Score the original rough prompt and your new refined version.`;
+  }
+  return `Rough prompt:
 ${prompt}`;
+}
+
+function parsePayload(payloadRaw) {
+  let changes = [];
+  let scores = null;
+  if (!payloadRaw.trim()) return { changes, scores };
+
+  try {
+    const cleaned = payloadRaw
+      .replace(/^```json\s*/i, '')
+      .replace(/```\s*$/, '')
+      .trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed.changes)) changes = parsed.changes;
+    if (parsed.scores && typeof parsed.scores === 'object') scores = parsed.scores;
+  } catch (parseError) {
+    console.warn('Failed to parse payload JSON:', payloadRaw.slice(0, 200));
+  }
+
+  return { changes, scores };
+}
+
+/**
+ * Stream a single refinement run.
+ * Calls callbacks with chunks. Does not write to the response directly —
+ * lets the caller decide how to format SSE events.
+ *
+ * @returns Promise<{ refined: string, changes: array, scores: object }>
+ */
+async function runRefinement({ model, system, userContent, onChunk, onRefinedDone }) {
+  const stream = await anthropic.messages.stream({
+    model,
+    max_tokens: 2200,
+    system,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  let buffer = '';
+  let delimiterFound = false;
+  let refinedSoFar = '';
+  let payloadRaw = '';
+
+  for await (const event of stream) {
+    if (event.type !== 'content_block_delta' || event.delta?.type !== 'text_delta') continue;
+    const chunk = event.delta.text;
+    buffer += chunk;
+
+    if (!delimiterFound) {
+      const idx = buffer.indexOf(DELIMITER);
+      if (idx === -1) {
+        // Hold back the last DELIMITER.length characters so we don't accidentally
+        // emit half of the delimiter string.
+        const safeEmitLen = Math.max(0, buffer.length - DELIMITER.length);
+        const toEmit = buffer.slice(refinedSoFar.length, safeEmitLen);
+        if (toEmit) {
+          refinedSoFar += toEmit;
+          onChunk?.(toEmit);
+        }
+      } else {
+        const remaining = buffer.slice(refinedSoFar.length, idx);
+        if (remaining) {
+          refinedSoFar += remaining;
+          onChunk?.(remaining);
+        }
+        delimiterFound = true;
+        payloadRaw = buffer.slice(idx + DELIMITER.length);
+        onRefinedDone?.();
+      }
+    } else {
+      payloadRaw += chunk;
+    }
+  }
+
+  // If delimiter never appeared, flush remaining buffer as refined text.
+  if (!delimiterFound) {
+    const remaining = buffer.slice(refinedSoFar.length);
+    if (remaining) onChunk?.(remaining);
+    onRefinedDone?.();
+  }
+
+  const { changes, scores } = parsePayload(payloadRaw);
+  return { refined: refinedSoFar, changes, scores };
+}
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+/**
+ * Single-model refinement endpoint.
+ * Unchanged from the previous version.
+ */
+app.post('/api/improve', async (req, res) => {
+  const { prompt, category = 'general', model, previousRefined, feedback } = req.body;
+
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'Prompt is required.' });
+  }
+
+  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
+  const isFollowUp = Boolean(previousRefined && feedback);
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -149,72 +240,16 @@ ${prompt}`;
   }
 
   try {
-    const stream = await anthropic.messages.stream({
+    const system = buildSystemPrompt(category, isFollowUp);
+    const userContent = buildUserContent({ prompt, isFollowUp, previousRefined, feedback });
+
+    const { changes, scores } = await runRefinement({
       model: safeModel,
-      max_tokens: 2200,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userContent }],
+      system,
+      userContent,
+      onChunk: (text) => send('refined-chunk', { text }),
+      onRefinedDone: () => send('refined-done', {}),
     });
-
-    let buffer = '';
-    let delimiterFound = false;
-    let refinedSoFar = '';
-    let payloadRaw = '';
-
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-        const chunk = event.delta.text;
-        buffer += chunk;
-
-        if (!delimiterFound) {
-          const idx = buffer.indexOf(DELIMITER);
-          if (idx === -1) {
-            const safeEmitLen = Math.max(0, buffer.length - DELIMITER.length);
-            const toEmit = buffer.slice(refinedSoFar.length, safeEmitLen);
-            if (toEmit) {
-              refinedSoFar += toEmit;
-              send('refined-chunk', { text: toEmit });
-            }
-          } else {
-            const remaining = buffer.slice(refinedSoFar.length, idx);
-            if (remaining) {
-              refinedSoFar += remaining;
-              send('refined-chunk', { text: remaining });
-            }
-            delimiterFound = true;
-            payloadRaw = buffer.slice(idx + DELIMITER.length);
-            send('refined-done', {});
-          }
-        } else {
-          payloadRaw += chunk;
-        }
-      }
-    }
-
-    if (!delimiterFound) {
-      const remaining = buffer.slice(refinedSoFar.length);
-      if (remaining) {
-        send('refined-chunk', { text: remaining });
-      }
-      send('refined-done', {});
-    }
-
-    let changes = [];
-    let scores = null;
-    if (payloadRaw.trim()) {
-      try {
-        const cleaned = payloadRaw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-        const parsed = JSON.parse(cleaned);
-        if (Array.isArray(parsed.changes)) {
-          changes = parsed.changes;
-        }
-        if (parsed.scores && typeof parsed.scores === 'object') {
-          scores = parsed.scores;
-        }
-      } catch (parseError) {
-        console.warn('Failed to parse payload JSON:', payloadRaw);
-      }
-    }
 
     send('changes', { changes });
     send('scores', { scores });
@@ -225,6 +260,84 @@ ${prompt}`;
     send('error', { error: 'Failed to refine prompt.' });
     res.end();
   }
+});
+
+/**
+ * Multi-model comparison endpoint.
+ * Spawns N parallel runs and streams interleaved events tagged by modelId.
+ * Each event includes a `modelId` field so the frontend routes to the right column.
+ */
+app.post('/api/improve-compare', async (req, res) => {
+  const { prompt, category = 'general', models } = req.body;
+
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'Prompt is required.' });
+  }
+
+  if (!Array.isArray(models) || models.length === 0) {
+    return res.status(400).json({ error: 'At least one model is required.' });
+  }
+
+  // Filter to allowed models, deduplicate.
+  const safeModels = [...new Set(models.filter((m) => ALLOWED_MODELS.has(m)))];
+  if (safeModels.length === 0) {
+    return res.status(400).json({ error: 'No valid models provided.' });
+  }
+
+  // Cap the number of parallel models to prevent runaway costs.
+  // 4 is the maximum reasonable number for visual comparison anyway.
+  if (safeModels.length > 4) {
+    return res.status(400).json({ error: 'Maximum 4 models per comparison.' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // Locked-writes wrapper: in parallel streaming, multiple awaits could
+  // theoretically interleave at the byte level, breaking SSE framing.
+  // We serialize through a tiny promise chain.
+  let writeChain = Promise.resolve();
+  function send(event, data) {
+    writeChain = writeChain.then(() => {
+      try {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        // If the client disconnected, writes will throw — that's fine.
+      }
+    });
+    return writeChain;
+  }
+
+  send('compare-start', { models: safeModels });
+
+  const system = buildSystemPrompt(category, false);
+  const userContent = buildUserContent({ prompt, isFollowUp: false });
+
+  // Run all models in parallel. Each one streams its own events.
+  const runs = safeModels.map(async (modelId) => {
+    try {
+      const { changes, scores } = await runRefinement({
+        model: modelId,
+        system,
+        userContent,
+        onChunk: (text) => send('model-chunk', { modelId, text }),
+        onRefinedDone: () => send('model-refined-done', { modelId }),
+      });
+      await send('model-changes', { modelId, changes });
+      await send('model-scores', { modelId, scores });
+      await send('model-done', { modelId });
+    } catch (error) {
+      console.error(`Model ${modelId} failed:`, error);
+      await send('model-error', { modelId, error: 'This model failed to respond.' });
+    }
+  });
+
+  // Wait for all to complete (or fail) before closing the response.
+  await Promise.allSettled(runs);
+  await send('compare-done', {});
+  res.end();
 });
 
 const PORT = process.env.PORT || 3001;

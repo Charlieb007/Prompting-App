@@ -206,6 +206,14 @@ function CompareIcon() {
   );
 }
 
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 /* Geometric funnel logo — concept 04 */
 function FunnelLogo() {
   return (
@@ -260,6 +268,7 @@ function HistoryView({ history, onLoad, onClear }) {
                   <div className="history-row">
                     <span className="history-cat">{entry.category}</span>
                     {entry.isFollowUp && <span className="history-followup">follow-up</span>}
+                    {entry.comparison && <span className="history-followup">compare</span>}
                     <span className="history-time">{formatTime(entry.timestamp)}</span>
                   </div>
                   <span className="history-text">{entry.rough}</span>
@@ -573,10 +582,11 @@ function ChangesPanel({ changes }) {
   );
 }
 
-function RadarChart({ scoreSet, variant }) {
-  const cx = 110;
-  const cy = 110;
-  const maxR = 78;
+function RadarChart({ scoreSet, variant, size = 'normal' }) {
+  const dimension = size === 'small' ? 160 : 220;
+  const cx = dimension / 2;
+  const cy = dimension / 2;
+  const maxR = (dimension / 2) - 32;
 
   const angles = SCORE_DIMENSIONS.map((_, i) =>
     -Math.PI / 2 + (i * 2 * Math.PI) / SCORE_DIMENSIONS.length
@@ -589,7 +599,7 @@ function RadarChart({ scoreSet, variant }) {
   }
 
   function labelPosition(i) {
-    const r = maxR + 22;
+    const r = maxR + (size === 'small' ? 18 : 22);
     return [cx + r * Math.cos(angles[i]), cy + r * Math.sin(angles[i])];
   }
 
@@ -608,7 +618,7 @@ function RadarChart({ scoreSet, variant }) {
     .join(' ');
 
   return (
-    <svg viewBox="0 0 220 220" className={`radar-chart radar-${variant}`} aria-hidden="true">
+    <svg viewBox={`0 0 ${dimension} ${dimension}`} className={`radar-chart radar-${variant} radar-${size}`} aria-hidden="true">
       {[1, 2, 3, 4, 5].map((level) => (
         <polygon
           key={level}
@@ -630,7 +640,7 @@ function RadarChart({ scoreSet, variant }) {
       {SCORE_DIMENSIONS.map((d, i) => {
         const score = scoreSet?.[d.id]?.score ?? 0;
         const [x, y] = pointAt(score, i);
-        return <circle key={d.id} cx={x} cy={y} r="3" className={`radar-point radar-point-${variant}`} />;
+        return <circle key={d.id} cx={x} cy={y} r={size === 'small' ? 2.5 : 3} className={`radar-point radar-point-${variant}`} />;
       })}
       {SCORE_DIMENSIONS.map((d, i) => {
         const [x, y] = labelPosition(i);
@@ -741,6 +751,219 @@ function ScoresPanel({ scores }) {
   );
 }
 
+/* ── Comparison strip ────────────────────────────────────── */
+
+function CompareInvite({ primaryModel, onCompare, disabled }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+
+  // Available comparison candidates — everything except the primary model and unavailable ones.
+  const candidates = MODELS.filter((m) => m.available && m.id !== primaryModel);
+
+  function toggle(modelId) {
+    const next = new Set(selected);
+    if (next.has(modelId)) next.delete(modelId);
+    else next.add(modelId);
+    setSelected(next);
+  }
+
+  function handleCompare() {
+    if (selected.size === 0) return;
+    onCompare([...selected]);
+    setPickerOpen(false);
+    setSelected(new Set());
+  }
+
+  return (
+    <div className="compare-invite">
+      <button
+        className="compare-invite-btn"
+        onClick={() => setPickerOpen(!pickerOpen)}
+        disabled={disabled}
+      >
+        <CompareIcon />
+        <span>Compare with other models</span>
+        <span className={`compare-chevron ${pickerOpen ? 'open' : ''}`}><ChevronDownIcon /></span>
+      </button>
+
+      {pickerOpen && (
+        <div className="compare-picker">
+          <div className="compare-picker-label">
+            Pick up to 3 models to compare against {modelShortName(primaryModel)}:
+          </div>
+          <div className="compare-picker-list">
+            {candidates.map((m) => {
+              const isSelected = selected.has(m.id);
+              const disabledForLimit = !isSelected && selected.size >= 3;
+              return (
+                <button
+                  key={m.id}
+                  className={`compare-picker-item ${isSelected ? 'selected' : ''}`}
+                  onClick={() => toggle(m.id)}
+                  disabled={disabledForLimit}
+                >
+                  <div className="compare-picker-check">
+                    {isSelected && <CheckIcon />}
+                  </div>
+                  <div className="compare-picker-name">
+                    <span>{m.shortName}</span>
+                    <span className="compare-picker-desc">{m.description}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="compare-picker-actions">
+            <button
+              className="text-btn"
+              onClick={() => { setPickerOpen(false); setSelected(new Set()); }}
+            >
+              Cancel
+            </button>
+            <button
+              className="compare-run-btn"
+              onClick={handleCompare}
+              disabled={selected.size === 0}
+            >
+              Run comparison ({selected.size})
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComparisonColumn({ column, onUseVersion }) {
+  const [expanded, setExpanded] = useState(false);
+  const refinedAvg = averageScore(column.scores?.refined);
+
+  if (column.error) {
+    return (
+      <div className="compare-col compare-col-error">
+        <div className="compare-col-header">
+          <span className="compare-col-model">{modelShortName(column.modelId)}</span>
+        </div>
+        <div className="compare-col-error-body">{column.error}</div>
+      </div>
+    );
+  }
+
+  const isStreaming = !column.complete && column.refined;
+  const isPending = !column.refined && !column.complete;
+
+  return (
+    <div className="compare-col">
+      <div className="compare-col-header">
+        <span className="compare-col-model">{modelShortName(column.modelId)}</span>
+        {refinedAvg !== null && (
+          <span className="compare-col-score">{refinedAvg.toFixed(1)}/5</span>
+        )}
+        {isStreaming && <span className="streaming-pulse" />}
+      </div>
+
+      {isPending && (
+        <div className="compare-col-pending">
+          <span className="thinking-dots">
+            <span className="thinking-dot"></span>
+            <span className="thinking-dot"></span>
+            <span className="thinking-dot"></span>
+          </span>
+        </div>
+      )}
+
+      {column.refined && (
+        <div className="compare-col-body">
+          {column.refined}
+          {isStreaming && <span className="caret" />}
+        </div>
+      )}
+
+      {column.complete && column.scores?.refined && (
+        <div className="compare-col-chart">
+          <RadarChart scoreSet={column.scores.refined} variant="refined" size="small" />
+        </div>
+      )}
+
+      {column.complete && (
+        <div className="compare-col-actions">
+          <button
+            className="compare-col-action"
+            onClick={() => navigator.clipboard.writeText(column.refined)}
+          >
+            Copy
+          </button>
+          <button
+            className="compare-col-action primary"
+            onClick={() => onUseVersion(column)}
+          >
+            Use this version
+          </button>
+          {(column.changes?.length > 0 || column.scores) && (
+            <button
+              className="compare-col-action"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? 'Hide details' : 'Show details'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {expanded && column.complete && (
+        <div className="compare-col-details">
+          {column.changes?.length > 0 && (
+            <ol className="compare-col-changes">
+              {column.changes.map((c, i) => (
+                <li key={i}>
+                  <div className="compare-col-change-title">{c.title}</div>
+                  <div className="compare-col-change-text">{c.explanation}</div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScores, primaryChanges, onUseVersion }) {
+  if (!comparison) return null;
+
+  // Build column list: primary first, then each compared model.
+  const primaryColumn = {
+    modelId: primaryModel,
+    refined: primaryRefined,
+    scores: primaryScores,
+    changes: primaryChanges,
+    complete: true,
+    isPrimary: true,
+  };
+
+  const columns = [primaryColumn, ...comparison.columns];
+
+  return (
+    <div className="compare-strip">
+      <div className="compare-strip-header">
+        <span className="compare-strip-label">Model comparison</span>
+        <span className="compare-strip-hint">
+          Same rough prompt refined by {columns.length} models
+        </span>
+      </div>
+      <div className="compare-grid" data-cols={columns.length}>
+        {columns.map((column) => (
+          <ComparisonColumn
+            key={column.modelId}
+            column={column}
+            onUseVersion={column.isPrimary ? () => {} : onUseVersion}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FollowUpPanel({ disabled, onSubmit }) {
   const [feedback, setFeedback] = useState('');
 
@@ -806,16 +1029,9 @@ function FollowUpPanel({ disabled, onSubmit }) {
   );
 }
 
-/* ── SSE stream parser ───────────────────────────────────── */
+/* ── SSE stream parsers ──────────────────────────────────── */
 
-async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onScores, onDone, onError, signal }) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
-
+async function consumeSSE(response, handlers) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Server returned an error.');
@@ -830,54 +1046,78 @@ async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, 
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
-
     const messages = buffer.split('\n\n');
     buffer = messages.pop() || '';
 
     for (const message of messages) {
       if (!message.trim()) continue;
-
       const lines = message.split('\n');
       let eventName = 'message';
       let dataLine = '';
-
       for (const line of lines) {
         if (line.startsWith('event:')) eventName = line.slice(6).trim();
         else if (line.startsWith('data:')) dataLine = line.slice(5).trim();
       }
-
       if (!dataLine) continue;
-
       let payload;
-      try {
-        payload = JSON.parse(dataLine);
-      } catch {
-        continue;
-      }
-
-      if (eventName === 'refined-chunk') onChunk?.(payload.text);
-      else if (eventName === 'refined-done') onRefinedDone?.();
-      else if (eventName === 'changes') onChanges?.(payload.changes || []);
-      else if (eventName === 'scores') onScores?.(payload.scores || null);
-      else if (eventName === 'done') onDone?.(payload);
-      else if (eventName === 'error') onError?.(payload.error || 'Unknown error');
+      try { payload = JSON.parse(dataLine); }
+      catch { continue; }
+      handlers[eventName]?.(payload);
     }
   }
+}
+
+async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onScores, onDone, onError, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'refined-chunk': (p) => onChunk?.(p.text),
+    'refined-done': () => onRefinedDone?.(),
+    'changes': (p) => onChanges?.(p.changes || []),
+    'scores': (p) => onScores?.(p.scores || null),
+    'done': (p) => onDone?.(p),
+    'error': (p) => onError?.(p.error || 'Unknown error'),
+  });
+}
+
+async function streamComparison({ url, body, onStart, onModelChunk, onModelChanges, onModelScores, onModelDone, onModelError, onDone, onError, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'compare-start': (p) => onStart?.(p),
+    'model-chunk': (p) => onModelChunk?.(p.modelId, p.text),
+    'model-changes': (p) => onModelChanges?.(p.modelId, p.changes || []),
+    'model-scores': (p) => onModelScores?.(p.modelId, p.scores || null),
+    'model-done': (p) => onModelDone?.(p.modelId),
+    'model-error': (p) => onModelError?.(p.modelId, p.error),
+    'compare-done': () => onDone?.(),
+    'error': (p) => onError?.(p.error || 'Unknown error'),
+  });
 }
 
 /* ── App ─────────────────────────────────────────────────── */
 
 function App() {
-  // Textarea content (live).
   const [roughPrompt, setRoughPrompt] = useState('');
-  // What was submitted for the current refinement (shown in the message bubble).
   const [submittedPrompt, setSubmittedPrompt] = useState('');
-  // For follow-ups, the feedback text that drove this iteration.
   const [submittedFeedback, setSubmittedFeedback] = useState('');
   const [category, setCategory] = useState('general');
   const [improvedPrompt, setImprovedPrompt] = useState('');
   const [changes, setChanges] = useState([]);
   const [scores, setScores] = useState(null);
+  const [primaryModel, setPrimaryModel] = useState(DEFAULT_MODEL);
+  const [comparison, setComparison] = useState(null);
+  const [comparing, setComparing] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [refinedComplete, setRefinedComplete] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -891,6 +1131,7 @@ function App() {
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
+  const compareAbortRef = useRef(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
@@ -945,8 +1186,17 @@ function App() {
     localStorage.removeItem(STORAGE_HISTORY);
   }
 
+  function clearCurrentRefinement() {
+    setImprovedPrompt('');
+    setChanges([]);
+    setScores(null);
+    setComparison(null);
+    setRefinedComplete(false);
+    setCurrentSavedId(null);
+  }
+
   function loadFromHistory(entry) {
-    if (streaming) return;
+    if (streaming || comparing) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback(entry.feedback || '');
@@ -954,6 +1204,8 @@ function App() {
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
     setScores(entry.scores || null);
+    setPrimaryModel(entry.model || DEFAULT_MODEL);
+    setComparison(entry.comparison || null);
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(null);
@@ -963,23 +1215,19 @@ function App() {
   }
 
   function loadFromTemplate(template) {
-    if (streaming) return;
+    if (streaming || comparing) return;
     setRoughPrompt(template.rough);
     setSubmittedPrompt('');
     setSubmittedFeedback('');
     setCategory(template.category);
-    setImprovedPrompt('');
-    setChanges([]);
-    setScores(null);
-    setRefinedComplete(false);
+    clearCurrentRefinement();
     setError('');
-    setCurrentSavedId(null);
     setActiveView(null);
     setTimeout(() => { textareaRef.current?.focus(); }, 250);
   }
 
   function loadFromSaved(entry) {
-    if (streaming) return;
+    if (streaming || comparing) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback('');
@@ -987,6 +1235,8 @@ function App() {
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
     setScores(entry.scores || null);
+    setPrimaryModel(entry.model || DEFAULT_MODEL);
+    setComparison(entry.comparison || null);
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(entry.id);
@@ -1016,7 +1266,8 @@ function App() {
       changes,
       scores,
       category,
-      model: settings.model,
+      model: primaryModel,
+      comparison,
       savedAt: Date.now(),
     };
     persistSaved([newEntry, ...saved]);
@@ -1044,10 +1295,8 @@ function App() {
   }
 
   async function runRefinement({ feedback = null } = {}) {
-    // For initial refinements, the source is roughPrompt (textarea).
-    // For follow-ups, the source is submittedPrompt (the original rough prompt we're iterating on).
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
-    if (!sourcePrompt.trim() || streaming) return;
+    if (!sourcePrompt.trim() || streaming || comparing) return;
 
     setLoading(true);
     setStreaming(true);
@@ -1055,11 +1304,10 @@ function App() {
     setRefinedComplete(false);
     setCopied(false);
     setCurrentSavedId(null);
+    setComparison(null); // Reset any comparison on new refinement
 
     const previousRefined = feedback ? improvedPrompt : null;
 
-    // On initial submit, capture what was submitted and clear the textarea.
-    // On follow-up, keep submittedPrompt as the original and set submittedFeedback for display.
     if (feedback) {
       setSubmittedFeedback(feedback);
     } else {
@@ -1071,6 +1319,7 @@ function App() {
     setImprovedPrompt('');
     setChanges([]);
     setScores(null);
+    setPrimaryModel(settings.model);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1134,6 +1383,101 @@ function App() {
     }
   }
 
+  async function runComparison(modelIds) {
+    if (!submittedPrompt.trim() || comparing || streaming) return;
+
+    setComparing(true);
+    setError('');
+
+    // Seed columns dictionary with pending entries for each model.
+    const initialColumns = modelIds.map((modelId) => ({
+      modelId,
+      refined: '',
+      changes: [],
+      scores: null,
+      complete: false,
+      error: null,
+    }));
+    setComparison({ columns: initialColumns });
+
+    const controller = new AbortController();
+    compareAbortRef.current = controller;
+
+    // Mutable working copy so we can update columns by id without stale state.
+    let workingColumns = [...initialColumns];
+
+    function updateColumn(modelId, updates) {
+      workingColumns = workingColumns.map((col) =>
+        col.modelId === modelId ? { ...col, ...updates } : col
+      );
+      setComparison({ columns: workingColumns });
+    }
+
+    try {
+      await streamComparison({
+        url: `${API_URL}/api/improve-compare`,
+        body: {
+          prompt: submittedPrompt,
+          category,
+          models: modelIds,
+        },
+        signal: controller.signal,
+        onStart: () => { /* noop */ },
+        onModelChunk: (modelId, text) => {
+          const col = workingColumns.find((c) => c.modelId === modelId);
+          if (col) updateColumn(modelId, { refined: col.refined + text });
+        },
+        onModelChanges: (modelId, modelChanges) => {
+          updateColumn(modelId, { changes: modelChanges });
+        },
+        onModelScores: (modelId, modelScores) => {
+          updateColumn(modelId, { scores: modelScores });
+        },
+        onModelDone: (modelId) => {
+          updateColumn(modelId, { complete: true });
+        },
+        onModelError: (modelId, errMsg) => {
+          updateColumn(modelId, { error: errMsg, complete: true });
+        },
+        onDone: () => {
+          // Save the completed comparison to the most recent history entry
+          // so reloads preserve it.
+          setHistory((current) => {
+            const updated = [...current];
+            if (updated.length > 0) {
+              updated[0] = {
+                ...updated[0],
+                comparison: { columns: workingColumns },
+              };
+              localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+            }
+            return updated;
+          });
+        },
+        onError: (msg) => { setError(msg); },
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Comparison failed.');
+        console.error(err);
+      }
+    } finally {
+      setComparing(false);
+      compareAbortRef.current = null;
+    }
+  }
+
+  function useComparisonVersion(column) {
+    if (!column?.refined) return;
+    // Promote this column to the primary refinement.
+    setImprovedPrompt(column.refined);
+    setChanges(column.changes || []);
+    setScores(column.scores || null);
+    setPrimaryModel(column.modelId);
+    setComparison(null); // Clear comparison since we've adopted one
+    setCurrentSavedId(null);
+  }
+
   function handleImprove() {
     runRefinement();
   }
@@ -1144,6 +1488,7 @@ function App() {
 
   function handleStop() {
     if (abortRef.current) abortRef.current.abort();
+    if (compareAbortRef.current) compareAbortRef.current.abort();
   }
 
   async function handleCopy() {
@@ -1162,7 +1507,9 @@ function App() {
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
-  const showFollowUp = Boolean(improvedPrompt) && refinedComplete;
+  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing;
+  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing;
+  const busy = streaming || comparing;
 
   return (
     <div className="shell">
@@ -1220,13 +1567,6 @@ function App() {
       </aside>
 
       <main className="main">
-        <header className="topbar">
-          <div>
-            <h1>Prompt Refinery</h1>
-            <p>Well-structured prompts.</p>
-          </div>
-        </header>
-
         <div className="conversation" ref={conversationRef}>
           <div className="conversation-inner">
             {showEmpty && (
@@ -1274,13 +1614,14 @@ function App() {
                   <div className="message-header">
                     <span className="message-label">
                       Refined prompt
+                      <span className="primary-model-tag">{modelShortName(primaryModel)}</span>
                       {streaming && <span className="streaming-pulse" />}
                     </span>
                     <div className="message-actions">
                       <button
                         className={`icon-action ${isSaved ? 'saved' : ''}`}
                         onClick={toggleSaveCurrent}
-                        disabled={!refinedComplete || streaming}
+                        disabled={!refinedComplete || busy}
                         aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
                         title={isSaved ? 'Remove from saved' : 'Save prompt'}
                       >
@@ -1289,7 +1630,7 @@ function App() {
                       <button
                         className="copy-btn"
                         onClick={handleCopy}
-                        disabled={streaming}
+                        disabled={busy}
                       >
                         {copied ? 'Copied' : 'Copy'}
                       </button>
@@ -1302,9 +1643,29 @@ function App() {
                 </div>
                 <ChangesPanel changes={changes} />
                 <ScoresPanel scores={scores} />
+
+                {showCompareInvite && (
+                  <CompareInvite
+                    primaryModel={primaryModel}
+                    onCompare={runComparison}
+                    disabled={busy}
+                  />
+                )}
+
+                {(comparison || comparing) && (
+                  <ComparisonStrip
+                    comparison={comparison}
+                    primaryModel={primaryModel}
+                    primaryRefined={improvedPrompt}
+                    primaryScores={scores}
+                    primaryChanges={changes}
+                    onUseVersion={useComparisonVersion}
+                  />
+                )}
+
                 {showFollowUp && (
                   <FollowUpPanel
-                    disabled={streaming}
+                    disabled={busy}
                     onSubmit={handleFollowUp}
                   />
                 )}
@@ -1328,7 +1689,7 @@ function App() {
                   type="button"
                   className={`chip ${category === c.id ? 'active' : ''}`}
                   onClick={() => setCategory(c.id)}
-                  disabled={streaming}
+                  disabled={busy}
                 >
                   {c.label}
                 </button>
@@ -1342,14 +1703,14 @@ function App() {
               onKeyDown={handleKeyDown}
               placeholder={submittedPrompt ? "Type another rough prompt..." : "Type a rough prompt... (Cmd+Enter to submit)"}
               rows={1}
-              disabled={streaming}
+              disabled={busy}
             />
 
             <div className="composer-actions">
               <span className="char-count">
                 {roughPrompt.length > 0 && `${roughPrompt.length} characters`}
               </span>
-              {streaming ? (
+              {busy ? (
                 <button
                   className="send-btn stop"
                   onClick={handleStop}
