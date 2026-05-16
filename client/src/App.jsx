@@ -36,13 +36,13 @@ const MAX_HISTORY = 20;
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 const MODELS = [
-  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', provider: 'Anthropic', description: 'Most capable. Best for complex prompts.', available: true },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', description: 'Balanced speed and capability.', available: true, isDefault: true },
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'Anthropic', description: 'Previous flagship. Still highly capable.', available: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'Anthropic', description: 'Fastest and cheapest. Good for simple prompts.', available: true },
-  { id: 'gpt-4', name: 'GPT-4', provider: 'OpenAI', description: 'Coming soon', available: false },
-  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', description: 'Coming soon', available: false },
-  { id: 'gemini-pro', name: 'Gemini Pro', provider: 'Google', description: 'Coming soon', available: false },
+  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', shortName: 'Opus 4.7', provider: 'Anthropic', description: 'Most capable. Best for complex prompts.', available: true },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', shortName: 'Sonnet 4.6', provider: 'Anthropic', description: 'Balanced speed and capability.', available: true, isDefault: true },
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', shortName: 'Opus 4.6', provider: 'Anthropic', description: 'Previous flagship. Still highly capable.', available: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', shortName: 'Haiku 4.5', provider: 'Anthropic', description: 'Fastest and cheapest. Good for simple prompts.', available: true },
+  { id: 'gpt-4', name: 'GPT-4', shortName: 'GPT-4', provider: 'OpenAI', description: 'Coming soon', available: false },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', shortName: 'GPT-4 Turbo', provider: 'OpenAI', description: 'Coming soon', available: false },
+  { id: 'gemini-pro', name: 'Gemini Pro', shortName: 'Gemini Pro', provider: 'Google', description: 'Coming soon', available: false },
 ];
 
 const DEFAULT_SETTINGS = { model: DEFAULT_MODEL };
@@ -68,6 +68,10 @@ function averageScore(scoreSet) {
   const values = SCORE_DIMENSIONS.map((d) => scoreSet[d.id]?.score).filter((s) => typeof s === 'number');
   if (values.length === 0) return null;
   return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function modelShortName(modelId) {
+  return MODELS.find((m) => m.id === modelId)?.shortName || modelId;
 }
 
 /* ── Icons ───────────────────────────────────────────────── */
@@ -192,6 +196,26 @@ function ArrowRightIcon() {
   );
 }
 
+function CompareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="7" height="14" rx="1.5" />
+      <rect x="14" y="5" width="7" height="14" rx="1.5" />
+      <line x1="10" y1="12" x2="14" y2="12" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+/* Geometric funnel logo — concept 04 */
+function FunnelLogo() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 6 L27 6 L19 16 L19 26 L13 28 L13 16 Z" />
+      <line x1="9" y1="11" x2="23" y2="11" opacity="0.5" />
+    </svg>
+  );
+}
+
 const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'saved', label: 'Saved prompts', icon: StarIcon },
@@ -201,6 +225,20 @@ const RAIL_ITEMS = [
 ];
 
 /* ── Drawer views ────────────────────────────────────────── */
+
+function DrawerLogo() {
+  return (
+    <div className="drawer-logo">
+      <div className="drawer-logo-mark">
+        <FunnelLogo />
+      </div>
+      <div className="drawer-logo-text">
+        <div className="drawer-logo-name">Prompt Refinery</div>
+        <div className="drawer-logo-tagline">Well-structured prompts.</div>
+      </div>
+    </div>
+  );
+}
 
 function HistoryView({ history, onLoad, onClear }) {
   return (
@@ -491,6 +529,25 @@ function SettingsView({ settings, onChange, onReset }) {
   );
 }
 
+/* ── Display panels ──────────────────────────────────────── */
+
+function RoughPromptMessage({ text, category, isFollowUp }) {
+  if (!text) return null;
+  return (
+    <div className="rough-message">
+      <div className="rough-message-header">
+        <span className="rough-message-label">
+          {isFollowUp ? 'Follow-up feedback' : 'Your rough prompt'}
+        </span>
+        {category && !isFollowUp && (
+          <span className="rough-message-cat">{category}</span>
+        )}
+      </div>
+      <div className="rough-message-body">{text}</div>
+    </div>
+  );
+}
+
 function ChangesPanel({ changes }) {
   if (!changes || changes.length === 0) return null;
 
@@ -516,10 +573,7 @@ function ChangesPanel({ changes }) {
   );
 }
 
-/* ── Radar chart ─────────────────────────────────────────── */
-
 function RadarChart({ scoreSet, variant }) {
-  // variant: 'rough' or 'refined' — controls styling
   const cx = 110;
   const cy = 110;
   const maxR = 78;
@@ -562,7 +616,6 @@ function RadarChart({ scoreSet, variant }) {
           className={`radar-ring ${level === 5 ? 'radar-ring-outer' : ''}`}
         />
       ))}
-
       {angles.map((a, i) => (
         <line
           key={i}
@@ -573,15 +626,12 @@ function RadarChart({ scoreSet, variant }) {
           className="radar-spoke"
         />
       ))}
-
       <polygon points={polygon} className={`radar-polygon radar-polygon-${variant}`} />
-
       {SCORE_DIMENSIONS.map((d, i) => {
         const score = scoreSet?.[d.id]?.score ?? 0;
         const [x, y] = pointAt(score, i);
         return <circle key={d.id} cx={x} cy={y} r="3" className={`radar-point radar-point-${variant}`} />;
       })}
-
       {SCORE_DIMENSIONS.map((d, i) => {
         const [x, y] = labelPosition(i);
         const score = scoreSet?.[d.id]?.score ?? 0;
@@ -599,8 +649,6 @@ function RadarChart({ scoreSet, variant }) {
     </svg>
   );
 }
-
-/* ── Scores panel ────────────────────────────────────────── */
 
 function ScoresPanel({ scores }) {
   if (!scores || !scores.refined) return null;
@@ -692,8 +740,6 @@ function ScoresPanel({ scores }) {
     </div>
   );
 }
-
-/* ── Follow-up panel ─────────────────────────────────────── */
 
 function FollowUpPanel({ disabled, onSubmit }) {
   const [feedback, setFeedback] = useState('');
@@ -822,7 +868,12 @@ async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, 
 /* ── App ─────────────────────────────────────────────────── */
 
 function App() {
+  // Textarea content (live).
   const [roughPrompt, setRoughPrompt] = useState('');
+  // What was submitted for the current refinement (shown in the message bubble).
+  const [submittedPrompt, setSubmittedPrompt] = useState('');
+  // For follow-ups, the feedback text that drove this iteration.
+  const [submittedFeedback, setSubmittedFeedback] = useState('');
   const [category, setCategory] = useState('general');
   const [improvedPrompt, setImprovedPrompt] = useState('');
   const [changes, setChanges] = useState([]);
@@ -896,7 +947,9 @@ function App() {
 
   function loadFromHistory(entry) {
     if (streaming) return;
-    setRoughPrompt(entry.rough);
+    setRoughPrompt('');
+    setSubmittedPrompt(entry.rough);
+    setSubmittedFeedback(entry.feedback || '');
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
@@ -912,6 +965,8 @@ function App() {
   function loadFromTemplate(template) {
     if (streaming) return;
     setRoughPrompt(template.rough);
+    setSubmittedPrompt('');
+    setSubmittedFeedback('');
     setCategory(template.category);
     setImprovedPrompt('');
     setChanges([]);
@@ -925,7 +980,9 @@ function App() {
 
   function loadFromSaved(entry) {
     if (streaming) return;
-    setRoughPrompt(entry.rough);
+    setRoughPrompt('');
+    setSubmittedPrompt(entry.rough);
+    setSubmittedFeedback('');
     setCategory(entry.category);
     setImprovedPrompt(entry.improved);
     setChanges(entry.changes || []);
@@ -954,7 +1011,7 @@ function App() {
     const newEntry = {
       id: makeId(),
       name: '',
-      rough: roughPrompt,
+      rough: submittedPrompt,
       improved: improvedPrompt,
       changes,
       scores,
@@ -987,7 +1044,10 @@ function App() {
   }
 
   async function runRefinement({ feedback = null } = {}) {
-    if (!roughPrompt.trim() || streaming) return;
+    // For initial refinements, the source is roughPrompt (textarea).
+    // For follow-ups, the source is submittedPrompt (the original rough prompt we're iterating on).
+    const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
+    if (!sourcePrompt.trim() || streaming) return;
 
     setLoading(true);
     setStreaming(true);
@@ -997,6 +1057,16 @@ function App() {
     setCurrentSavedId(null);
 
     const previousRefined = feedback ? improvedPrompt : null;
+
+    // On initial submit, capture what was submitted and clear the textarea.
+    // On follow-up, keep submittedPrompt as the original and set submittedFeedback for display.
+    if (feedback) {
+      setSubmittedFeedback(feedback);
+    } else {
+      setSubmittedPrompt(roughPrompt);
+      setSubmittedFeedback('');
+      setRoughPrompt('');
+    }
 
     setImprovedPrompt('');
     setChanges([]);
@@ -1013,7 +1083,7 @@ function App() {
       await streamRefinement({
         url: `${API_URL}/api/improve`,
         body: {
-          prompt: roughPrompt,
+          prompt: sourcePrompt,
           category,
           model: settings.model,
           previousRefined: previousRefined || undefined,
@@ -1037,7 +1107,7 @@ function App() {
         onDone: () => {
           if (accumulatedRefined) {
             saveToHistory({
-              rough: roughPrompt,
+              rough: sourcePrompt,
               improved: accumulatedRefined,
               changes: accumulatedChanges,
               scores: accumulatedScores,
@@ -1089,7 +1159,7 @@ function App() {
     }
   }
 
-  const showEmpty = !improvedPrompt && !loading && !error && !streaming;
+  const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
   const showFollowUp = Boolean(improvedPrompt) && refinedComplete;
@@ -1127,6 +1197,7 @@ function App() {
 
       <aside className={`drawer ${drawerOpen ? '' : 'closed'}`}>
         <div className="drawer-inner">
+          <DrawerLogo />
           {activeView === 'history' && (
             <HistoryView history={history} onLoad={loadFromHistory} onClear={clearHistory} />
           )}
@@ -1163,6 +1234,22 @@ function App() {
                 <h2>What can I help you refine?</h2>
                 <p>Type a rough prompt below, or pick a template from the sidebar.</p>
               </div>
+            )}
+
+            {submittedPrompt && (
+              <RoughPromptMessage
+                text={submittedPrompt}
+                category={category}
+                isFollowUp={false}
+              />
+            )}
+
+            {submittedFeedback && (
+              <RoughPromptMessage
+                text={submittedFeedback}
+                category={null}
+                isFollowUp={true}
+              />
             )}
 
             {loading && !improvedPrompt && (
@@ -1253,7 +1340,7 @@ function App() {
               value={roughPrompt}
               onChange={(e) => setRoughPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a rough prompt... (Cmd+Enter to submit)"
+              placeholder={submittedPrompt ? "Type another rough prompt..." : "Type a rough prompt... (Cmd+Enter to submit)"}
               rows={1}
               disabled={streaming}
             />
