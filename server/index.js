@@ -22,15 +22,61 @@ const ALLOWED_MODELS = new Set([
   'claude-haiku-4-5-20251001',
 ]);
 
+// ── Refinement instructions, by category ─────────────────────────────────
+//
+// Each category instruction tells the refinement model what to focus on.
+// Below the per-category guidance, all categories share a small set of
+// universal heuristics drawn from established prompt engineering literature
+// (OpenAI's Best Practices, Google's Prompting Essentials, Anthropic's
+// prompt engineering documentation). Each adopted heuristic has an inline
+// comment explaining what it is and why it was included.
+//
+// Insights deliberately NOT adopted, and why:
+//   - "Add chain-of-thought to every prompt" — over-applies. Belongs in
+//     follow-up, not in default refinement, since it lengthens every output.
+//   - "Always assign a persona" — recent evidence is mixed; produces more
+//     confident-sounding output without measurably more accurate output.
+//   - The 4D framework (Delegation/Description/Discernment/Diligence) — the
+//     source material is CC BY-NC-SA 4.0 licensed, which conflicts with
+//     this app's commercial intent.
+
+const UNIVERSAL_REFINEMENT_HEURISTICS = `
+General refinement rules (apply to all categories):
+
+1. Use delimiters to separate distinct parts of the refined prompt when it has
+   multiple sections. Use XML-style tags like <context>, <task>, <constraints>,
+   <format>, <examples>. This makes the refined prompt's intent unambiguous
+   when the user takes it to any model.
+   [Source: OpenAI Best Practices, Anthropic prompt engineering docs. Adopted
+   because clear structural delimiters demonstrably improve how downstream
+   models parse multi-part instructions.]
+
+2. If the task involves factual claims, analysis, or decisions, instruct the
+   eventual model on how to handle uncertainty. Add an explicit line like
+   "If you are not certain, say so explicitly rather than guessing." Do not
+   add this for purely creative or brainstorming tasks where speculation is
+   the point.
+   [Source: OpenAI Best Practices, Google Prompting Essentials. Adopted
+   because the default failure mode for models is confabulation; an explicit
+   uncertainty clause materially reduces this.]
+
+3. If the refined prompt is long (more than ~150 words), put the single most
+   important instruction or the core question at the very END of the prompt,
+   after all context and constraints. Models attend more strongly to recent
+   tokens; the "ask" lands harder when it's last.
+   [Source: Anthropic prompt engineering docs, OpenAI Best Practices.
+   Adopted because the empirical observation holds across model families.]
+`;
+
 const CATEGORY_INSTRUCTIONS = {
   general:
     'Rewrite the prompt to be clear, specific, and well-structured. Add concrete details where the original is vague, specify the desired output format, and break complex tasks into steps.',
   writing:
     'Rewrite the prompt for a creative or professional writing task. Specify the audience, tone, length, and format. Add guidance on voice, structure, and any constraints.',
   code:
-    'Rewrite the prompt as a software engineering task. Specify the programming language, expected input and output, edge cases to handle, constraints, and the desired code style.',
+    'Rewrite the prompt as a software engineering task. Specify the programming language, expected input and output, edge cases to handle, constraints, and the desired code style. Include an instruction for the eventual model to ask clarifying questions if requirements are ambiguous rather than guessing.',
   analysis:
-    'Rewrite the prompt for an analysis or research task. Specify the data or source material, the questions to answer, the output structure, and ask for citations or reasoning.',
+    'Rewrite the prompt for an analysis or research task. Specify the data or source material, the questions to answer, the output structure, and ask for citations or reasoning. Include an explicit instruction to say "I do not know" or "the data does not support a conclusion" rather than fabricating findings.',
   brainstorm:
     'Rewrite the prompt as a brainstorming request. Specify the number of ideas wanted, any categorization, and the criteria each idea should be evaluated against.',
 };
@@ -63,6 +109,8 @@ function buildSystemPrompt(category, isFollowUp) {
     : `You are an expert at prompt engineering. ${instruction}`;
 
   return `${baseTask}
+
+${UNIVERSAL_REFINEMENT_HEURISTICS}
 
 Your response has two parts, separated by a special delimiter:
 
@@ -151,11 +199,7 @@ function parsePayload(payloadRaw) {
 }
 
 /**
- * Stream a single refinement run.
- * Calls callbacks with chunks. Does not write to the response directly —
- * lets the caller decide how to format SSE events.
- *
- * @returns Promise<{ refined: string, changes: array, scores: object }>
+ * Stream a single refinement run. Calls callbacks with chunks.
  */
 async function runRefinement({ model, system, userContent, onChunk, onRefinedDone }) {
   const stream = await anthropic.messages.stream({
@@ -178,8 +222,6 @@ async function runRefinement({ model, system, userContent, onChunk, onRefinedDon
     if (!delimiterFound) {
       const idx = buffer.indexOf(DELIMITER);
       if (idx === -1) {
-        // Hold back the last DELIMITER.length characters so we don't accidentally
-        // emit half of the delimiter string.
         const safeEmitLen = Math.max(0, buffer.length - DELIMITER.length);
         const toEmit = buffer.slice(refinedSoFar.length, safeEmitLen);
         if (toEmit) {
@@ -201,7 +243,6 @@ async function runRefinement({ model, system, userContent, onChunk, onRefinedDon
     }
   }
 
-  // If delimiter never appeared, flush remaining buffer as refined text.
   if (!delimiterFound) {
     const remaining = buffer.slice(refinedSoFar.length);
     if (remaining) onChunk?.(remaining);
@@ -216,10 +257,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-/**
- * Single-model refinement endpoint.
- * Unchanged from the previous version.
- */
 app.post('/api/improve', async (req, res) => {
   const { prompt, category = 'general', model, previousRefined, feedback } = req.body;
 
@@ -262,11 +299,6 @@ app.post('/api/improve', async (req, res) => {
   }
 });
 
-/**
- * Multi-model comparison endpoint.
- * Spawns N parallel runs and streams interleaved events tagged by modelId.
- * Each event includes a `modelId` field so the frontend routes to the right column.
- */
 app.post('/api/improve-compare', async (req, res) => {
   const { prompt, category = 'general', models } = req.body;
 
@@ -278,14 +310,11 @@ app.post('/api/improve-compare', async (req, res) => {
     return res.status(400).json({ error: 'At least one model is required.' });
   }
 
-  // Filter to allowed models, deduplicate.
   const safeModels = [...new Set(models.filter((m) => ALLOWED_MODELS.has(m)))];
   if (safeModels.length === 0) {
     return res.status(400).json({ error: 'No valid models provided.' });
   }
 
-  // Cap the number of parallel models to prevent runaway costs.
-  // 4 is the maximum reasonable number for visual comparison anyway.
   if (safeModels.length > 4) {
     return res.status(400).json({ error: 'Maximum 4 models per comparison.' });
   }
@@ -295,16 +324,13 @@ app.post('/api/improve-compare', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
 
-  // Locked-writes wrapper: in parallel streaming, multiple awaits could
-  // theoretically interleave at the byte level, breaking SSE framing.
-  // We serialize through a tiny promise chain.
   let writeChain = Promise.resolve();
   function send(event, data) {
     writeChain = writeChain.then(() => {
       try {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       } catch (err) {
-        // If the client disconnected, writes will throw — that's fine.
+        // Client disconnect — writes will throw, which is fine
       }
     });
     return writeChain;
@@ -315,7 +341,6 @@ app.post('/api/improve-compare', async (req, res) => {
   const system = buildSystemPrompt(category, false);
   const userContent = buildUserContent({ prompt, isFollowUp: false });
 
-  // Run all models in parallel. Each one streams its own events.
   const runs = safeModels.map(async (modelId) => {
     try {
       const { changes, scores } = await runRefinement({
@@ -334,7 +359,6 @@ app.post('/api/improve-compare', async (req, res) => {
     }
   });
 
-  // Wait for all to complete (or fail) before closing the response.
   await Promise.allSettled(runs);
   await send('compare-done', {});
   res.end();
