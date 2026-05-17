@@ -214,7 +214,6 @@ function ChevronDownIcon() {
   );
 }
 
-/* Geometric funnel logo — concept 04 */
 function FunnelLogo() {
   return (
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -231,6 +230,116 @@ const RAIL_ITEMS = [
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
+
+/* ── Skeleton placeholders ───────────────────────────────── */
+
+function SkeletonBar({ width = '100%', height = 12, strong = false }) {
+  return (
+    <span
+      className={`skeleton-bar ${strong ? 'skeleton-strong' : ''}`}
+      style={{ width, height: `${height}px` }}
+    />
+  );
+}
+
+function ChangesSkeleton() {
+  return (
+    <div className="changes skeleton">
+      <div className="changes-header">
+        <span className="changes-icon"><SparkIcon /></span>
+        <span className="changes-label">What changed</span>
+        <span className="skeleton-pill" />
+      </div>
+      <div className="changes-list">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="changes-item">
+            <span className="skeleton-circle" />
+            <div className="changes-body skeleton-body-stack">
+              <SkeletonBar width="60%" height={11} strong />
+              <SkeletonBar width="92%" height={10} />
+              <SkeletonBar width="78%" height={10} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="skeleton-status">
+        <span className="thinking-dots">
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+        </span>
+        <span>Analyzing changes…</span>
+      </div>
+    </div>
+  );
+}
+
+function ScoresSkeleton() {
+  return (
+    <div className="scores skeleton">
+      <div className="scores-header">
+        <span className="scores-icon"><GaugeIcon /></span>
+        <span className="scores-label">Quality score</span>
+        <span className="skeleton-pill skeleton-pill-wide" />
+      </div>
+      <div className="scores-charts">
+        <div className="scores-chart-block">
+          <div className="scores-chart-caption">
+            <SkeletonBar width="80px" height={10} />
+          </div>
+          <div className="skeleton-radar" />
+        </div>
+        <div className="scores-chart-block">
+          <div className="scores-chart-caption">
+            <SkeletonBar width="80px" height={10} />
+          </div>
+          <div className="skeleton-radar" />
+        </div>
+      </div>
+      <div className="scores-list">
+        {SCORE_DIMENSIONS.map((d) => (
+          <div key={d.id} className="scores-item">
+            <div className="scores-item-head">
+              <SkeletonBar width="100px" height={11} strong />
+              <SkeletonBar width="60px" height={11} />
+            </div>
+            <SkeletonBar width="90%" height={9} />
+          </div>
+        ))}
+      </div>
+      <div className="skeleton-status">
+        <span className="thinking-dots">
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+        </span>
+        <span>Scoring quality…</span>
+      </div>
+    </div>
+  );
+}
+
+function ComparisonColumnSkeleton({ modelId }) {
+  return (
+    <div className="compare-col compare-col-skeleton">
+      <div className="compare-col-header">
+        <span className="compare-col-model">{modelShortName(modelId)}</span>
+        <span className="thinking-dots">
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+          <span className="thinking-dot"></span>
+        </span>
+      </div>
+      <div className="compare-col-skeleton-body">
+        <SkeletonBar width="95%" height={10} />
+        <SkeletonBar width="88%" height={10} />
+        <SkeletonBar width="92%" height={10} />
+        <SkeletonBar width="70%" height={10} />
+        <div className="skeleton-radar skeleton-radar-small" />
+      </div>
+    </div>
+  );
+}
 
 /* ── Drawer views ────────────────────────────────────────── */
 
@@ -757,7 +866,6 @@ function CompareInvite({ primaryModel, onCompare, disabled }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState(new Set());
 
-  // Available comparison candidates — everything except the primary model and unavailable ones.
   const candidates = MODELS.filter((m) => m.available && m.id !== primaryModel);
 
   function toggle(modelId) {
@@ -836,7 +944,14 @@ function CompareInvite({ primaryModel, onCompare, disabled }) {
 
 function ComparisonColumn({ column, onUseVersion }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const refinedAvg = averageScore(column.scores?.refined);
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(column.refined);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
 
   if (column.error) {
     return (
@@ -849,8 +964,11 @@ function ComparisonColumn({ column, onUseVersion }) {
     );
   }
 
+  if (!column.refined && !column.complete) {
+    return <ComparisonColumnSkeleton modelId={column.modelId} />;
+  }
+
   const isStreaming = !column.complete && column.refined;
-  const isPending = !column.refined && !column.complete;
 
   return (
     <div className="compare-col">
@@ -861,16 +979,6 @@ function ComparisonColumn({ column, onUseVersion }) {
         )}
         {isStreaming && <span className="streaming-pulse" />}
       </div>
-
-      {isPending && (
-        <div className="compare-col-pending">
-          <span className="thinking-dots">
-            <span className="thinking-dot"></span>
-            <span className="thinking-dot"></span>
-            <span className="thinking-dot"></span>
-          </span>
-        </div>
-      )}
 
       {column.refined && (
         <div className="compare-col-body">
@@ -888,23 +996,28 @@ function ComparisonColumn({ column, onUseVersion }) {
       {column.complete && (
         <div className="compare-col-actions">
           <button
+            type="button"
             className="compare-col-action"
-            onClick={() => navigator.clipboard.writeText(column.refined)}
+            onClick={handleCopy}
           >
-            Copy
+            <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          <button
-            className="compare-col-action primary"
-            onClick={() => onUseVersion(column)}
-          >
-            Use this version
-          </button>
+          {!column.isPrimary && (
+            <button
+              type="button"
+              className="compare-col-action primary"
+              onClick={() => onUseVersion(column)}
+            >
+              <span>Use this version</span>
+            </button>
+          )}
           {(column.changes?.length > 0 || column.scores) && (
             <button
+              type="button"
               className="compare-col-action"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? 'Hide details' : 'Show details'}
+              <span>{expanded ? 'Hide details' : 'Show details'}</span>
             </button>
           )}
         </div>
@@ -931,7 +1044,6 @@ function ComparisonColumn({ column, onUseVersion }) {
 function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScores, primaryChanges, onUseVersion }) {
   if (!comparison) return null;
 
-  // Build column list: primary first, then each compared model.
   const primaryColumn = {
     modelId: primaryModel,
     refined: primaryRefined,
@@ -956,7 +1068,7 @@ function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScor
           <ComparisonColumn
             key={column.modelId}
             column={column}
-            onUseVersion={column.isPrimary ? () => {} : onUseVersion}
+            onUseVersion={onUseVersion}
           />
         ))}
       </div>
@@ -1126,7 +1238,13 @@ function App() {
   const [history, setHistory] = useState([]);
   const [saved, setSaved] = useState([]);
   const [currentSavedId, setCurrentSavedId] = useState(null);
-  const [activeView, setActiveView] = useState('history');
+
+  // ── CRITICAL: Sidebar default state ───────────────────────
+  // activeView is null when the drawer is closed. null is the ONLY initial value used here.
+  // We do NOT read any persisted state from localStorage or any other source for the sidebar.
+  // The drawer ALWAYS starts closed on every page load. Period.
+  const [activeView, setActiveView] = useState(null);
+
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
@@ -1134,6 +1252,8 @@ function App() {
   const compareAbortRef = useRef(null);
 
   useEffect(() => {
+    // Load non-sidebar state from localStorage.
+    // We deliberately do NOT load any sidebar/drawer state — it always starts closed.
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
     if (savedHistory) {
       try { setHistory(JSON.parse(savedHistory)); }
@@ -1304,7 +1424,7 @@ function App() {
     setRefinedComplete(false);
     setCopied(false);
     setCurrentSavedId(null);
-    setComparison(null); // Reset any comparison on new refinement
+    setComparison(null);
 
     const previousRefined = feedback ? improvedPrompt : null;
 
@@ -1389,7 +1509,6 @@ function App() {
     setComparing(true);
     setError('');
 
-    // Seed columns dictionary with pending entries for each model.
     const initialColumns = modelIds.map((modelId) => ({
       modelId,
       refined: '',
@@ -1403,7 +1522,6 @@ function App() {
     const controller = new AbortController();
     compareAbortRef.current = controller;
 
-    // Mutable working copy so we can update columns by id without stale state.
     let workingColumns = [...initialColumns];
 
     function updateColumn(modelId, updates) {
@@ -1440,8 +1558,6 @@ function App() {
           updateColumn(modelId, { error: errMsg, complete: true });
         },
         onDone: () => {
-          // Save the completed comparison to the most recent history entry
-          // so reloads preserve it.
           setHistory((current) => {
             const updated = [...current];
             if (updated.length > 0) {
@@ -1469,12 +1585,11 @@ function App() {
 
   function useComparisonVersion(column) {
     if (!column?.refined) return;
-    // Promote this column to the primary refinement.
     setImprovedPrompt(column.refined);
     setChanges(column.changes || []);
     setScores(column.scores || null);
     setPrimaryModel(column.modelId);
-    setComparison(null); // Clear comparison since we've adopted one
+    setComparison(null);
     setCurrentSavedId(null);
   }
 
@@ -1504,12 +1619,16 @@ function App() {
     }
   }
 
+  // Derived UI flags
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
-  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing;
-  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing;
   const busy = streaming || comparing;
+  const isRefinementInProgress = Boolean(submittedPrompt) && !error && !comparing;
+  const showChangesSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && changes.length === 0;
+  const showScoresSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && !scores;
+  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && changes.length > 0 && scores !== null;
+  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && changes.length > 0 && scores !== null;
 
   return (
     <div className="shell">
@@ -1542,7 +1661,7 @@ function App() {
         <div className="rail-spacer" />
       </nav>
 
-      <aside className={`drawer ${drawerOpen ? '' : 'closed'}`}>
+      <aside className={`drawer ${drawerOpen ? 'open' : 'closed'}`}>
         <div className="drawer-inner">
           <DrawerLogo />
           {activeView === 'history' && (
@@ -1603,73 +1722,75 @@ function App() {
                     <span className="thinking-dot"></span>
                     <span className="thinking-dot"></span>
                   </span>
-                  Thinking...
+                  Refining prompt…
                 </div>
               </div>
             )}
 
             {improvedPrompt && (
-              <>
-                <div className="message">
-                  <div className="message-header">
-                    <span className="message-label">
-                      Refined prompt
-                      <span className="primary-model-tag">{modelShortName(primaryModel)}</span>
-                      {streaming && <span className="streaming-pulse" />}
-                    </span>
-                    <div className="message-actions">
-                      <button
-                        className={`icon-action ${isSaved ? 'saved' : ''}`}
-                        onClick={toggleSaveCurrent}
-                        disabled={!refinedComplete || busy}
-                        aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
-                        title={isSaved ? 'Remove from saved' : 'Save prompt'}
-                      >
-                        <StarIcon filled={isSaved} />
-                      </button>
-                      <button
-                        className="copy-btn"
-                        onClick={handleCopy}
-                        disabled={busy}
-                      >
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="message-body">
-                    {improvedPrompt}
-                    {streaming && <span className="caret" />}
+              <div className="message">
+                <div className="message-header">
+                  <span className="message-label">
+                    Refined prompt
+                    <span className="primary-model-tag">{modelShortName(primaryModel)}</span>
+                    {streaming && <span className="streaming-pulse" />}
+                  </span>
+                  <div className="message-actions">
+                    <button
+                      className={`icon-action ${isSaved ? 'saved' : ''}`}
+                      onClick={toggleSaveCurrent}
+                      disabled={!refinedComplete || busy}
+                      aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
+                      title={isSaved ? 'Remove from saved' : 'Save prompt'}
+                    >
+                      <StarIcon filled={isSaved} />
+                    </button>
+                    <button
+                      className="copy-btn"
+                      onClick={handleCopy}
+                      disabled={busy}
+                    >
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
                   </div>
                 </div>
-                <ChangesPanel changes={changes} />
-                <ScoresPanel scores={scores} />
+                <div className="message-body">
+                  {improvedPrompt}
+                  {streaming && <span className="caret" />}
+                </div>
+              </div>
+            )}
 
-                {showCompareInvite && (
-                  <CompareInvite
-                    primaryModel={primaryModel}
-                    onCompare={runComparison}
-                    disabled={busy}
-                  />
-                )}
+            {showChangesSkeleton && <ChangesSkeleton />}
+            {changes.length > 0 && <ChangesPanel changes={changes} />}
 
-                {(comparison || comparing) && (
-                  <ComparisonStrip
-                    comparison={comparison}
-                    primaryModel={primaryModel}
-                    primaryRefined={improvedPrompt}
-                    primaryScores={scores}
-                    primaryChanges={changes}
-                    onUseVersion={useComparisonVersion}
-                  />
-                )}
+            {showScoresSkeleton && <ScoresSkeleton />}
+            {scores && <ScoresPanel scores={scores} />}
 
-                {showFollowUp && (
-                  <FollowUpPanel
-                    disabled={busy}
-                    onSubmit={handleFollowUp}
-                  />
-                )}
-              </>
+            {showCompareInvite && (
+              <CompareInvite
+                primaryModel={primaryModel}
+                onCompare={runComparison}
+                disabled={busy}
+              />
+            )}
+
+            {(comparison || comparing) && (
+              <ComparisonStrip
+                comparison={comparison}
+                primaryModel={primaryModel}
+                primaryRefined={improvedPrompt}
+                primaryScores={scores}
+                primaryChanges={changes}
+                onUseVersion={useComparisonVersion}
+              />
+            )}
+
+            {showFollowUp && (
+              <FollowUpPanel
+                disabled={busy}
+                onSubmit={handleFollowUp}
+              />
             )}
 
             {error && (
