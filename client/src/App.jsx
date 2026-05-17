@@ -4,6 +4,7 @@ import { HELP_CONTENT } from './help-content.js';
 import { TEMPLATES } from './templates-content.js';
 import { exportMarkdown, exportJSON, exportCSV, importFile } from './io.js';
 import { lintPrompt, lintSummary } from './lint.js';
+import { scanForPII, hasCriticalFindings, groupFindings, CATEGORY_META } from './scan.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -56,8 +57,11 @@ const PRICING = {
   'claude-haiku-4-5-20251001': { input: 1.00, output:  5.00 },
 };
 
-// linterEnabled defaults to true. Stored in settings so we can toggle from UI.
-const DEFAULT_SETTINGS = { model: DEFAULT_MODEL, linterEnabled: true };
+const DEFAULT_SETTINGS = {
+  model: DEFAULT_MODEL,
+  linterEnabled: true,
+  piiScannerEnabled: true,
+};
 
 function formatTime(timestamp) {
   const diff = Date.now() - timestamp;
@@ -285,6 +289,41 @@ function CloseIcon() {
   );
 }
 
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function KeyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="14" r="4" />
+      <path d="M11 11l9-9 3 3-3 3 3 3-3 3-3-3-3 3" />
+    </svg>
+  );
+}
+
+function CardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+    </svg>
+  );
+}
+
+function ContactIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
 function FunnelLogo() {
   return (
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -302,6 +341,13 @@ const RAIL_ITEMS = [
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
+
+function CategoryIcon({ category }) {
+  if (category === 'credentials') return <KeyIcon />;
+  if (category === 'financial') return <CardIcon />;
+  if (category === 'contact') return <ContactIcon />;
+  return <ShieldIcon />;
+}
 
 /* ── Skeleton placeholders ───────────────────────────────── */
 
@@ -445,6 +491,91 @@ function LintHintsPanel({ hints, dismissed, onDismiss }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/* ── PII warning modal ───────────────────────────────────── */
+
+function PIIWarningModal({ findings, onContinue, onCancel }) {
+  const grouped = groupFindings(findings);
+  const hasCritical = hasCriticalFindings(findings);
+
+  function handleBackdropClick(e) {
+    if (e.target === e.currentTarget) onCancel();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={handleBackdropClick}>
+      <div className="modal pii-modal" role="dialog" aria-modal="true" aria-labelledby="pii-title">
+        <div className="modal-head pii-modal-head">
+          <div className="pii-modal-head-icon">
+            <ShieldIcon />
+          </div>
+          <div>
+            <h2 id="pii-title">Personal information detected</h2>
+            <p className="pii-modal-subtitle">
+              Found in your prompt before sending to {modelShortName(DEFAULT_MODEL)}. Review what's flagged.
+            </p>
+          </div>
+          <button
+            className="modal-close"
+            onClick={onCancel}
+            aria-label="Close"
+            title="Close"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {Object.entries(grouped).map(([category, items]) => {
+            if (items.length === 0) return null;
+            const meta = CATEGORY_META[category];
+            return (
+              <section key={category} className={`pii-category pii-category-${category}`}>
+                <div className="pii-category-header">
+                  <span className="pii-category-icon">
+                    <CategoryIcon category={category} />
+                  </span>
+                  <div className="pii-category-text">
+                    <div className="pii-category-label">{meta.label}</div>
+                    <div className="pii-category-desc">{meta.description}</div>
+                  </div>
+                  <span className="pii-category-count">{items.length}</span>
+                </div>
+                <ul className="pii-finding-list">
+                  {items.map((f) => (
+                    <li key={f.id} className={`pii-finding pii-finding-${f.severity}`}>
+                      <span className="pii-finding-label">{f.label}</span>
+                      <code className="pii-finding-snippet">{f.snippet}</code>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+
+          <div className="pii-modal-explainer">
+            This check runs in your browser. Nothing has been sent yet. You can edit your prompt to remove these, or continue anyway if they're intentional.
+          </div>
+        </div>
+
+        <div className="modal-foot pii-modal-foot">
+          <button
+            className="pii-modal-btn pii-modal-btn-secondary"
+            onClick={onCancel}
+          >
+            Edit prompt
+          </button>
+          <button
+            className={`pii-modal-btn ${hasCritical ? 'pii-modal-btn-warning' : 'pii-modal-btn-primary'}`}
+            onClick={onContinue}
+          >
+            {hasCritical ? 'Send anyway' : 'Send as-is'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -893,6 +1024,34 @@ function SettingsView({ settings, onChange, onReset }) {
                 {settings.linterEnabled
                   ? 'Hints appear under the composer when issues are detected.'
                   : 'No hints will be shown.'}
+              </div>
+            </div>
+            <div className="toggle-switch">
+              <div className="toggle-switch-thumb" />
+            </div>
+          </button>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-group">
+          <div className="settings-group-label">Privacy</div>
+          <div className="settings-group-hint">
+            Check your rough prompt for things like API keys, card numbers, emails, and phone numbers before sending to the API. Runs in your browser.
+          </div>
+          <button
+            type="button"
+            className={`toggle-row ${settings.piiScannerEnabled ? 'on' : ''}`}
+            onClick={() => onChange({ piiScannerEnabled: !settings.piiScannerEnabled })}
+            role="switch"
+            aria-checked={settings.piiScannerEnabled}
+          >
+            <div className="toggle-row-text">
+              <div className="toggle-row-label">Scan for personal info before sending</div>
+              <div className="toggle-row-desc">
+                {settings.piiScannerEnabled
+                  ? 'A warning appears if sensitive-looking content is detected.'
+                  : 'Prompts are sent without a privacy check.'}
               </div>
             </div>
             <div className="toggle-switch">
@@ -1724,11 +1883,15 @@ function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [usage, setUsage] = useState([]);
-
-  // Linter state. lintHints is debounced; dismissedHints lets the user
-  // hide an individual hint until they edit the prompt again.
   const [lintHints, setLintHints] = useState([]);
   const [dismissedHints, setDismissedHints] = useState([]);
+
+  // PII scanner state. piiFindings holds detection results when the user has
+  // attempted to refine and the scanner flagged something. piiPendingFeedback
+  // remembers whether the pending submission was a follow-up (and what its
+  // feedback was) so we can resume it after user confirms.
+  const [piiFindings, setPiiFindings] = useState(null);
+  const [piiPendingFeedback, setPiiPendingFeedback] = useState(null);
 
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
@@ -1770,6 +1933,19 @@ function App() {
     return () => document.removeEventListener('keydown', onEsc);
   }, [importExportOpen]);
 
+  // Escape closes the PII modal (treats it as Cancel)
+  useEffect(() => {
+    if (!piiFindings) return;
+    function onEsc(e) {
+      if (e.key === 'Escape') {
+        setPiiFindings(null);
+        setPiiPendingFeedback(null);
+      }
+    }
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [piiFindings]);
+
   function autoResize() {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -1779,9 +1955,6 @@ function App() {
 
   useEffect(() => { autoResize(); }, [roughPrompt]);
 
-  // Debounced linter. Runs 400ms after the user stops typing.
-  // Also reset dismissedHints whenever the prompt changes — a "Dismiss"
-  // shouldn't persist after they edit the prompt.
   useEffect(() => {
     if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     setDismissedHints([]);
@@ -1983,7 +2156,9 @@ function App() {
     setDismissedHints((prev) => [...prev, hintId]);
   }
 
-  async function runRefinement({ feedback = null } = {}) {
+  // The actual refinement work, extracted so PII confirmation can call it
+  // after the user clicks "Send anyway."
+  async function executeRefinement({ feedback = null } = {}) {
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
     if (!sourcePrompt.trim() || streaming || comparing) return;
 
@@ -2090,6 +2265,36 @@ function App() {
       setRefinedComplete(true);
       abortRef.current = null;
     }
+  }
+
+  // The gatekeeper. Runs PII scan first if enabled. If findings exist, opens
+  // the modal and stops. Otherwise, calls executeRefinement immediately.
+  async function runRefinement({ feedback = null } = {}) {
+    const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
+    if (!sourcePrompt.trim() || streaming || comparing) return;
+
+    if (settings.piiScannerEnabled) {
+      const findings = scanForPII(sourcePrompt);
+      if (findings.length > 0) {
+        setPiiFindings(findings);
+        setPiiPendingFeedback(feedback);
+        return;
+      }
+    }
+
+    executeRefinement({ feedback });
+  }
+
+  function handlePIIContinue() {
+    const feedback = piiPendingFeedback;
+    setPiiFindings(null);
+    setPiiPendingFeedback(null);
+    executeRefinement({ feedback });
+  }
+
+  function handlePIICancel() {
+    setPiiFindings(null);
+    setPiiPendingFeedback(null);
   }
 
   async function runComparison(modelIds) {
@@ -2496,6 +2701,14 @@ function App() {
           saved={saved}
           onClose={() => setImportExportOpen(false)}
           onImport={handleImport}
+        />
+      )}
+
+      {piiFindings && (
+        <PIIWarningModal
+          findings={piiFindings}
+          onContinue={handlePIIContinue}
+          onCancel={handlePIICancel}
         />
       )}
     </div>
