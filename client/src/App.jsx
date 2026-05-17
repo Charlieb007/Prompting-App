@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { HELP_CONTENT } from './help-content.js';
 import { TEMPLATES } from './templates-content.js';
+import { exportMarkdown, exportJSON, exportCSV, importFile } from './io.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -214,6 +215,35 @@ function ChevronDownIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
 function FunnelLogo() {
   return (
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -357,14 +387,23 @@ function DrawerLogo() {
   );
 }
 
-function HistoryView({ history, onLoad, onClear }) {
+function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
   return (
     <>
       <div className="drawer-head">
         <h3>History</h3>
-        {history.length > 0 && (
-          <button className="text-btn" onClick={onClear}>Clear all</button>
-        )}
+        <div className="drawer-head-actions">
+          <button
+            className="text-btn"
+            onClick={onOpenImportExport}
+            title="Export or import your prompt data"
+          >
+            Export / Import
+          </button>
+          {history.length > 0 && (
+            <button className="text-btn" onClick={onClear}>Clear all</button>
+          )}
+        </div>
       </div>
       <div className="drawer-body">
         {history.length === 0 ? (
@@ -378,6 +417,7 @@ function HistoryView({ history, onLoad, onClear }) {
                     <span className="history-cat">{entry.category}</span>
                     {entry.isFollowUp && <span className="history-followup">follow-up</span>}
                     {entry.comparison && <span className="history-followup">compare</span>}
+                    {entry.imported && <span className="history-followup">imported</span>}
                     <span className="history-time">{formatTime(entry.timestamp)}</span>
                   </div>
                   <span className="history-text">{entry.rough}</span>
@@ -644,6 +684,166 @@ function SettingsView({ settings, onChange, onReset }) {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Import/Export modal ─────────────────────────────────── */
+
+function ImportExportModal({ history, saved, onClose, onImport }) {
+  const fileInputRef = useRef(null);
+  const [importStatus, setImportStatus] = useState(null);
+  // importStatus shape: { kind: 'success' | 'error' | 'loading', message: string }
+
+  function handleExport(format) {
+    if (history.length === 0 && saved.length === 0) {
+      setImportStatus({ kind: 'error', message: 'Nothing to export yet. Refine a prompt or save one first.' });
+      return;
+    }
+    try {
+      if (format === 'markdown') exportMarkdown(history, saved);
+      else if (format === 'json') exportJSON(history, saved);
+      else if (format === 'csv') exportCSV(history, saved);
+      setImportStatus({
+        kind: 'success',
+        message: `Exported as ${format.toUpperCase()}. Check your downloads.`,
+      });
+    } catch (err) {
+      console.error(err);
+      setImportStatus({ kind: 'error', message: 'Export failed. Please try again.' });
+    }
+  }
+
+  function handleImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportStatus({ kind: 'loading', message: `Reading ${file.name}…` });
+
+    try {
+      const text = await file.text();
+      const result = importFile(file.name, text, history, saved);
+      onImport(result.importedHistory, result.importedSaved);
+
+      const parts = [];
+      parts.push(`${result.totalImported} prompts imported successfully.`);
+      if (result.duplicateCount > 0) {
+        parts.push(`${result.duplicateCount} skipped as duplicates.`);
+      }
+      if (result.invalidCount > 0) {
+        parts.push(`${result.invalidCount} skipped as invalid.`);
+      }
+      setImportStatus({
+        kind: 'success',
+        message: parts.join(' '),
+      });
+    } catch (err) {
+      console.error(err);
+      setImportStatus({
+        kind: 'error',
+        message: err.message || 'Import failed. Please check the file and try again.',
+      });
+    } finally {
+      // Reset the input so selecting the same file again triggers onChange
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function handleBackdropClick(e) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={handleBackdropClick}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="ie-title">
+        <div className="modal-head">
+          <h2 id="ie-title">Export / Import</h2>
+          <button
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <section className="modal-section">
+            <h3>Export</h3>
+            <p className="modal-section-hint">
+              Save a copy of your {history.length} history {history.length === 1 ? 'entry' : 'entries'}{' '}
+              and {saved.length} saved {saved.length === 1 ? 'prompt' : 'prompts'} to a file.
+            </p>
+
+            <div className="format-list">
+              <button className="format-card" onClick={() => handleExport('markdown')}>
+                <div className="format-card-head">
+                  <DownloadIcon />
+                  <span className="format-card-title">Markdown</span>
+                  <span className="format-card-ext">.md</span>
+                </div>
+                <div className="format-card-desc">
+                  Human-readable. Great for reviewing or sharing. Comparisons are included as quoted blocks.
+                </div>
+              </button>
+
+              <button className="format-card" onClick={() => handleExport('json')}>
+                <div className="format-card-head">
+                  <DownloadIcon />
+                  <span className="format-card-title">JSON</span>
+                  <span className="format-card-ext">.json</span>
+                  <span className="format-card-badge">Lossless</span>
+                </div>
+                <div className="format-card-desc">
+                  Complete backup with every field, including comparison columns and score rationales. Best for re-importing later.
+                </div>
+              </button>
+
+              <button className="format-card" onClick={() => handleExport('csv')}>
+                <div className="format-card-head">
+                  <DownloadIcon />
+                  <span className="format-card-title">CSV</span>
+                  <span className="format-card-ext">.csv</span>
+                </div>
+                <div className="format-card-desc">
+                  Flat spreadsheet format. Loses nested data (comparisons, per-dimension rationales). Best for analysis in Excel / Google Sheets.
+                </div>
+              </button>
+            </div>
+          </section>
+
+          <section className="modal-section">
+            <h3>Import</h3>
+            <p className="modal-section-hint">
+              Add prompts from a previously exported <code>.json</code>, <code>.md</code>, or <code>.csv</code> file.
+              Imports are <strong>merged</strong> with your existing data — duplicates are skipped automatically.
+            </p>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,.md,.markdown,.csv,application/json,text/markdown,text/csv"
+              onChange={handleFileSelected}
+              style={{ display: 'none' }}
+            />
+            <button className="import-btn" onClick={handleImportClick}>
+              <UploadIcon />
+              <span>Choose file to import…</span>
+            </button>
+          </section>
+
+          {importStatus && (
+            <div className={`modal-status modal-status-${importStatus.kind}`}>
+              {importStatus.message}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1239,21 +1439,17 @@ function App() {
   const [saved, setSaved] = useState([]);
   const [currentSavedId, setCurrentSavedId] = useState(null);
 
-  // ── CRITICAL: Sidebar default state ───────────────────────
-  // activeView is null when the drawer is closed. null is the ONLY initial value used here.
-  // We do NOT read any persisted state from localStorage or any other source for the sidebar.
-  // The drawer ALWAYS starts closed on every page load. Period.
+  // Sidebar always starts CLOSED on every page load. No persistence.
   const [activeView, setActiveView] = useState(null);
 
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [importExportOpen, setImportExportOpen] = useState(false);
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
   const compareAbortRef = useRef(null);
 
   useEffect(() => {
-    // Load non-sidebar state from localStorage.
-    // We deliberately do NOT load any sidebar/drawer state — it always starts closed.
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
     if (savedHistory) {
       try { setHistory(JSON.parse(savedHistory)); }
@@ -1272,6 +1468,16 @@ function App() {
       catch { setSaved([]); }
     }
   }, []);
+
+  // Close modal on Escape
+  useEffect(() => {
+    if (!importExportOpen) return;
+    function onEsc(e) {
+      if (e.key === 'Escape') setImportExportOpen(false);
+    }
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [importExportOpen]);
 
   function autoResize() {
     const ta = textareaRef.current;
@@ -1412,6 +1618,23 @@ function App() {
 
   function toggleSidebar() {
     setActiveView(activeView === null ? 'history' : null);
+  }
+
+  // ── Import handler ─────────────────────────────────────────
+  // Receives entries already validated, normalized, and deduplicated by io.js.
+  // We MERGE — appending imported entries to existing arrays — never overwrite.
+  function handleImport(importedHistory, importedSaved) {
+    if (importedHistory.length > 0) {
+      // Imported history entries go BEFORE the cap so the user keeps their newest.
+      // Then trim to MAX_HISTORY at the end.
+      const next = [...history, ...importedHistory].slice(0, MAX_HISTORY);
+      setHistory(next);
+      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(next));
+    }
+    if (importedSaved.length > 0) {
+      const next = [...saved, ...importedSaved];
+      persistSaved(next);
+    }
   }
 
   async function runRefinement({ feedback = null } = {}) {
@@ -1665,7 +1888,12 @@ function App() {
         <div className="drawer-inner">
           <DrawerLogo />
           {activeView === 'history' && (
-            <HistoryView history={history} onLoad={loadFromHistory} onClear={clearHistory} />
+            <HistoryView
+              history={history}
+              onLoad={loadFromHistory}
+              onClear={clearHistory}
+              onOpenImportExport={() => setImportExportOpen(true)}
+            />
           )}
           {activeView === 'saved' && (
             <SavedView
@@ -1854,6 +2082,15 @@ function App() {
           </div>
         </div>
       </main>
+
+      {importExportOpen && (
+        <ImportExportModal
+          history={history}
+          saved={saved}
+          onClose={() => setImportExportOpen(false)}
+          onImport={handleImport}
+        />
+      )}
     </div>
   );
 }
