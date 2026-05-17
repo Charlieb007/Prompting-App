@@ -3,6 +3,7 @@ import './App.css';
 import { HELP_CONTENT } from './help-content.js';
 import { TEMPLATES } from './templates-content.js';
 import { exportMarkdown, exportJSON, exportCSV, importFile } from './io.js';
+import { lintPrompt, lintSummary } from './lint.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -48,10 +49,6 @@ const MODELS = [
   { id: 'gemini-pro', name: 'Gemini Pro', shortName: 'Gemini Pro', provider: 'Google', description: 'Coming soon', available: false },
 ];
 
-// Anthropic API pricing per million tokens, sourced from claude.com/pricing
-// and confirmed against multiple secondary sources as of May 2026.
-// Format: { input: USD per MTok input, output: USD per MTok output }.
-// Update this constant when Anthropic changes published rates.
 const PRICING = {
   'claude-opus-4-7':           { input: 5.00, output: 25.00 },
   'claude-opus-4-6':           { input: 5.00, output: 25.00 },
@@ -59,7 +56,8 @@ const PRICING = {
   'claude-haiku-4-5-20251001': { input: 1.00, output:  5.00 },
 };
 
-const DEFAULT_SETTINGS = { model: DEFAULT_MODEL };
+// linterEnabled defaults to true. Stored in settings so we can toggle from UI.
+const DEFAULT_SETTINGS = { model: DEFAULT_MODEL, linterEnabled: true };
 
 function formatTime(timestamp) {
   const diff = Date.now() - timestamp;
@@ -88,8 +86,6 @@ function modelShortName(modelId) {
   return MODELS.find((m) => m.id === modelId)?.shortName || modelId;
 }
 
-// Compute USD cost from token counts. Returns null if pricing isn't known
-// for this model — we never guess.
 function computeCost(modelId, usage) {
   const rates = PRICING[modelId];
   if (!rates || !usage) return null;
@@ -98,7 +94,6 @@ function computeCost(modelId, usage) {
   return inputCost + outputCost;
 }
 
-// Format a USD cost for inline display. Sub-cent costs show 3 decimals.
 function formatCost(usd) {
   if (usd === null || usd === undefined) return null;
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
@@ -418,6 +413,42 @@ function ComparisonColumnSkeleton({ modelId }) {
   );
 }
 
+/* ── Linter hints panel ──────────────────────────────────── */
+
+function LintHintsPanel({ hints, dismissed, onDismiss }) {
+  const visible = hints.filter((h) => !dismissed.includes(h.id));
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="lint-hints">
+      <div className="lint-hints-header">
+        <span className="lint-hints-summary">{lintSummary(visible)}</span>
+        <span className="lint-hints-meta">{visible.length === 1 ? 'suggestion' : 'suggestions'}</span>
+      </div>
+      <ul className="lint-hints-list">
+        {visible.map((hint) => (
+          <li key={hint.id} className={`lint-hint lint-hint-${hint.severity}`}>
+            <span className={`lint-hint-dot lint-hint-dot-${hint.severity}`} />
+            <div className="lint-hint-body">
+              <div className="lint-hint-label">{hint.label}</div>
+              <div className="lint-hint-message">{hint.message}</div>
+            </div>
+            <button
+              type="button"
+              className="lint-hint-dismiss"
+              onClick={() => onDismiss(hint.id)}
+              aria-label="Dismiss this hint"
+              title="Dismiss"
+            >
+              <CloseIcon />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /* ── Drawer views ────────────────────────────────────────── */
 
 function DrawerLogo() {
@@ -617,8 +648,6 @@ function TemplatesView({ onSelect }) {
 }
 
 function UsageView({ usage, onClear }) {
-  // Pre-compute aggregates using useMemo so this doesn't recompute on every
-  // unrelated re-render.
   const stats = useMemo(() => {
     if (!usage || usage.length === 0) return null;
 
@@ -672,7 +701,6 @@ function UsageView({ usage, onClear }) {
       .map(([model, stats]) => ({ model, ...stats }))
       .sort((a, b) => b.cost - a.cost);
 
-    // Last 7 days, oldest first, filling in missing days as zero
     const dayEntries = [];
     for (let i = 6; i >= 0; i--) {
       const dayKey = new Date(now - i * dayMs).toISOString().slice(0, 10);
@@ -846,6 +874,35 @@ function SettingsView({ settings, onChange, onReset }) {
         <button className="text-btn" onClick={onReset}>Reset</button>
       </div>
       <div className="drawer-body settings-body">
+
+        <div className="settings-group">
+          <div className="settings-group-label">Prompt linter</div>
+          <div className="settings-group-hint">
+            Get instant hints about your rough prompt as you type. No API call — runs locally.
+          </div>
+          <button
+            type="button"
+            className={`toggle-row ${settings.linterEnabled ? 'on' : ''}`}
+            onClick={() => onChange({ linterEnabled: !settings.linterEnabled })}
+            role="switch"
+            aria-checked={settings.linterEnabled}
+          >
+            <div className="toggle-row-text">
+              <div className="toggle-row-label">Show linter hints</div>
+              <div className="toggle-row-desc">
+                {settings.linterEnabled
+                  ? 'Hints appear under the composer when issues are detected.'
+                  : 'No hints will be shown.'}
+              </div>
+            </div>
+            <div className="toggle-switch">
+              <div className="toggle-switch-thumb" />
+            </div>
+          </button>
+        </div>
+
+        <div className="settings-divider" />
+
         <div className="settings-group">
           <div className="settings-group-label">Model</div>
           <div className="settings-group-hint">
@@ -1001,7 +1058,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
                   <span className="format-card-ext">.md</span>
                 </div>
                 <div className="format-card-desc">
-                  Human-readable. Great for reviewing or sharing. Comparisons are included as quoted blocks.
+                  Human-readable. Great for reviewing or sharing.
                 </div>
               </button>
 
@@ -1013,7 +1070,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
                   <span className="format-card-badge">Lossless</span>
                 </div>
                 <div className="format-card-desc">
-                  Complete backup with every field, including comparison columns and score rationales. Best for re-importing later.
+                  Complete backup with every field. Best for re-importing later.
                 </div>
               </button>
 
@@ -1024,7 +1081,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
                   <span className="format-card-ext">.csv</span>
                 </div>
                 <div className="format-card-desc">
-                  Flat spreadsheet format. Loses nested data (comparisons, per-dimension rationales). Best for analysis in Excel / Google Sheets.
+                  Flat spreadsheet format. Best for Excel / Google Sheets.
                 </div>
               </button>
             </div>
@@ -1082,7 +1139,6 @@ function RoughPromptMessage({ text, category, isFollowUp }) {
 
 function ChangesPanel({ changes }) {
   if (!changes || changes.length === 0) return null;
-
   return (
     <div className="changes">
       <div className="changes-header">
@@ -1652,8 +1708,6 @@ function App() {
   const [changes, setChanges] = useState([]);
   const [scores, setScores] = useState(null);
   const [primaryModel, setPrimaryModel] = useState(DEFAULT_MODEL);
-  // Usage data for the CURRENT refinement (input/output tokens + latency).
-  // Used to display cost/latency next to the refined prompt's model badge.
   const [primaryUsage, setPrimaryUsage] = useState(null);
   const [primaryLatencyMs, setPrimaryLatencyMs] = useState(null);
   const [comparison, setComparison] = useState(null);
@@ -1669,14 +1723,18 @@ function App() {
   const [activeView, setActiveView] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [importExportOpen, setImportExportOpen] = useState(false);
-  // Aggregate usage records — appended on every refinement/comparison-column
-  // completion. Capped at MAX_USAGE_RECORDS records to keep localStorage small.
   const [usage, setUsage] = useState([]);
+
+  // Linter state. lintHints is debounced; dismissedHints lets the user
+  // hide an individual hint until they edit the prompt again.
+  const [lintHints, setLintHints] = useState([]);
+  const [dismissedHints, setDismissedHints] = useState([]);
 
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
   const compareAbortRef = useRef(null);
+  const lintTimerRef = useRef(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
@@ -1721,6 +1779,29 @@ function App() {
 
   useEffect(() => { autoResize(); }, [roughPrompt]);
 
+  // Debounced linter. Runs 400ms after the user stops typing.
+  // Also reset dismissedHints whenever the prompt changes — a "Dismiss"
+  // shouldn't persist after they edit the prompt.
+  useEffect(() => {
+    if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
+    setDismissedHints([]);
+
+    if (!settings.linterEnabled) {
+      setLintHints([]);
+      return;
+    }
+    if (!roughPrompt.trim()) {
+      setLintHints([]);
+      return;
+    }
+    lintTimerRef.current = setTimeout(() => {
+      setLintHints(lintPrompt(roughPrompt));
+    }, 400);
+    return () => {
+      if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
+    };
+  }, [roughPrompt, settings.linterEnabled]);
+
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
     setSettings(updated);
@@ -1733,8 +1814,6 @@ function App() {
     localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
   }
 
-  // Append a usage record. Always cap at MAX_USAGE_RECORDS so localStorage
-  // stays well within the 5MB quota.
   function recordUsage({ model, usage: u, latencyMs, kind }) {
     if (!u || (u.inputTokens === 0 && u.outputTokens === 0)) return;
     const cost = computeCost(model, u);
@@ -1900,6 +1979,10 @@ function App() {
     }
   }
 
+  function dismissLintHint(hintId) {
+    setDismissedHints((prev) => [...prev, hintId]);
+  }
+
   async function runRefinement({ feedback = null } = {}) {
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
     if (!sourcePrompt.trim() || streaming || comparing) return;
@@ -1986,7 +2069,6 @@ function App() {
               isFollowUp: Boolean(feedback),
               feedback: feedback || undefined,
             });
-            // Record this refinement in the usage log
             recordUsage({
               model: settings.model,
               usage: accumulatedUsage,
@@ -2066,7 +2148,6 @@ function App() {
             usage: modelUsage || null,
             latencyMs: modelLatencyMs || null,
           });
-          // Record each comparison column as its own usage event
           if (modelUsage) {
             recordUsage({
               model: modelId,
@@ -2152,6 +2233,7 @@ function App() {
   const showScoresSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && !scores;
   const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && changes.length > 0 && scores !== null;
   const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && changes.length > 0 && scores !== null;
+  const showLintHints = settings.linterEnabled && !busy && lintHints.length > 0;
 
   const primaryCost = primaryUsage ? computeCost(primaryModel, primaryUsage) : null;
 
@@ -2397,6 +2479,14 @@ function App() {
               )}
             </div>
           </div>
+
+          {showLintHints && (
+            <LintHintsPanel
+              hints={lintHints}
+              dismissed={dismissedHints}
+              onDismiss={dismissLintHint}
+            />
+          )}
         </div>
       </main>
 

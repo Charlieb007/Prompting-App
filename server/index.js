@@ -22,24 +22,6 @@ const ALLOWED_MODELS = new Set([
   'claude-haiku-4-5-20251001',
 ]);
 
-// ── Refinement instructions, by category ─────────────────────────────────
-//
-// Each category instruction tells the refinement model what to focus on.
-// Below the per-category guidance, all categories share a small set of
-// universal heuristics drawn from established prompt engineering literature
-// (OpenAI's Best Practices, Google's Prompting Essentials, Anthropic's
-// prompt engineering documentation). Each adopted heuristic has an inline
-// comment explaining what it is and why it was included.
-//
-// Insights deliberately NOT adopted, and why:
-//   - "Add chain-of-thought to every prompt" — over-applies. Belongs in
-//     follow-up, not in default refinement, since it lengthens every output.
-//   - "Always assign a persona" — recent evidence is mixed; produces more
-//     confident-sounding output without measurably more accurate output.
-//   - The 4D framework (Delegation/Description/Discernment/Diligence) — the
-//     source material is CC BY-NC-SA 4.0 licensed, which conflicts with
-//     this app's commercial intent.
-
 const UNIVERSAL_REFINEMENT_HEURISTICS = `
 General refinement rules (apply to all categories):
 
@@ -47,25 +29,17 @@ General refinement rules (apply to all categories):
    multiple sections. Use XML-style tags like <context>, <task>, <constraints>,
    <format>, <examples>. This makes the refined prompt's intent unambiguous
    when the user takes it to any model.
-   [Source: OpenAI Best Practices, Anthropic prompt engineering docs. Adopted
-   because clear structural delimiters demonstrably improve how downstream
-   models parse multi-part instructions.]
 
 2. If the task involves factual claims, analysis, or decisions, instruct the
    eventual model on how to handle uncertainty. Add an explicit line like
    "If you are not certain, say so explicitly rather than guessing." Do not
    add this for purely creative or brainstorming tasks where speculation is
    the point.
-   [Source: OpenAI Best Practices, Google Prompting Essentials. Adopted
-   because the default failure mode for models is confabulation; an explicit
-   uncertainty clause materially reduces this.]
 
 3. If the refined prompt is long (more than ~150 words), put the single most
    important instruction or the core question at the very END of the prompt,
    after all context and constraints. Models attend more strongly to recent
    tokens; the "ask" lands harder when it's last.
-   [Source: Anthropic prompt engineering docs, OpenAI Best Practices.
-   Adopted because the empirical observation holds across model families.]
 `;
 
 const CATEGORY_INSTRUCTIONS = {
@@ -199,9 +173,13 @@ function parsePayload(payloadRaw) {
 }
 
 /**
- * Stream a single refinement run. Calls callbacks with chunks.
+ * Stream a single refinement run.
+ * Returns refined text, changes, scores, AND usage data (input/output tokens)
+ * and latencyMs. Usage is needed by the client to compute and display cost.
  */
 async function runRefinement({ model, system, userContent, onChunk, onRefinedDone }) {
+  const startTime = Date.now();
+
   const stream = await anthropic.messages.stream({
     model,
     max_tokens: 2200,
@@ -249,8 +227,20 @@ async function runRefinement({ model, system, userContent, onChunk, onRefinedDon
     onRefinedDone?.();
   }
 
+  // After the stream completes, retrieve the final message to access usage.
+  // The SDK's stream object holds onto this for us.
+  const finalMessage = await stream.finalMessage();
+  const usage = finalMessage.usage
+    ? {
+        inputTokens: finalMessage.usage.input_tokens || 0,
+        outputTokens: finalMessage.usage.output_tokens || 0,
+      }
+    : { inputTokens: 0, outputTokens: 0 };
+
+  const latencyMs = Date.now() - startTime;
   const { changes, scores } = parsePayload(payloadRaw);
-  return { refined: refinedSoFar, changes, scores };
+
+  return { refined: refinedSoFar, changes, scores, usage, latencyMs };
 }
 
 app.get('/api/health', (req, res) => {
@@ -280,7 +270,7 @@ app.post('/api/improve', async (req, res) => {
     const system = buildSystemPrompt(category, isFollowUp);
     const userContent = buildUserContent({ prompt, isFollowUp, previousRefined, feedback });
 
-    const { changes, scores } = await runRefinement({
+    const { changes, scores, usage, latencyMs } = await runRefinement({
       model: safeModel,
       system,
       userContent,
@@ -290,7 +280,8 @@ app.post('/api/improve', async (req, res) => {
 
     send('changes', { changes });
     send('scores', { scores });
-    send('done', { modelUsed: safeModel });
+    // Usage data is bundled into the 'done' event so the client can record it.
+    send('done', { modelUsed: safeModel, usage, latencyMs });
     res.end();
   } catch (error) {
     console.error('Anthropic API error:', error);
@@ -330,7 +321,7 @@ app.post('/api/improve-compare', async (req, res) => {
       try {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       } catch (err) {
-        // Client disconnect — writes will throw, which is fine
+        // Client disconnect
       }
     });
     return writeChain;
@@ -343,7 +334,7 @@ app.post('/api/improve-compare', async (req, res) => {
 
   const runs = safeModels.map(async (modelId) => {
     try {
-      const { changes, scores } = await runRefinement({
+      const { changes, scores, usage, latencyMs } = await runRefinement({
         model: modelId,
         system,
         userContent,
@@ -352,7 +343,9 @@ app.post('/api/improve-compare', async (req, res) => {
       });
       await send('model-changes', { modelId, changes });
       await send('model-scores', { modelId, scores });
-      await send('model-done', { modelId });
+      // Per-model usage is included in the model-done event so each column
+      // can record its own cost contribution.
+      await send('model-done', { modelId, usage, latencyMs });
     } catch (error) {
       console.error(`Model ${modelId} failed:`, error);
       await send('model-error', { modelId, error: 'This model failed to respond.' });
