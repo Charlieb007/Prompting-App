@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import './App.css';
 import { HELP_CONTENT } from './help-content.js';
 import { TEMPLATES } from './templates-content.js';
@@ -32,7 +32,9 @@ const SCORE_DIMENSIONS = [
 const STORAGE_HISTORY = 'prompt-improver-history';
 const STORAGE_SETTINGS = 'prompt-improver-settings';
 const STORAGE_SAVED = 'prompt-improver-saved';
+const STORAGE_USAGE = 'prompt-improver-usage';
 const MAX_HISTORY = 20;
+const MAX_USAGE_RECORDS = 500;
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
@@ -45,6 +47,17 @@ const MODELS = [
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', shortName: 'GPT-4 Turbo', provider: 'OpenAI', description: 'Coming soon', available: false },
   { id: 'gemini-pro', name: 'Gemini Pro', shortName: 'Gemini Pro', provider: 'Google', description: 'Coming soon', available: false },
 ];
+
+// Anthropic API pricing per million tokens, sourced from claude.com/pricing
+// and confirmed against multiple secondary sources as of May 2026.
+// Format: { input: USD per MTok input, output: USD per MTok output }.
+// Update this constant when Anthropic changes published rates.
+const PRICING = {
+  'claude-opus-4-7':           { input: 5.00, output: 25.00 },
+  'claude-opus-4-6':           { input: 5.00, output: 25.00 },
+  'claude-sonnet-4-6':         { input: 3.00, output: 15.00 },
+  'claude-haiku-4-5-20251001': { input: 1.00, output:  5.00 },
+};
 
 const DEFAULT_SETTINGS = { model: DEFAULT_MODEL };
 
@@ -73,6 +86,29 @@ function averageScore(scoreSet) {
 
 function modelShortName(modelId) {
   return MODELS.find((m) => m.id === modelId)?.shortName || modelId;
+}
+
+// Compute USD cost from token counts. Returns null if pricing isn't known
+// for this model — we never guess.
+function computeCost(modelId, usage) {
+  const rates = PRICING[modelId];
+  if (!rates || !usage) return null;
+  const inputCost = (usage.inputTokens / 1_000_000) * rates.input;
+  const outputCost = (usage.outputTokens / 1_000_000) * rates.output;
+  return inputCost + outputCost;
+}
+
+// Format a USD cost for inline display. Sub-cent costs show 3 decimals.
+function formatCost(usd) {
+  if (usd === null || usd === undefined) return null;
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+function formatLatency(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 /* ── Icons ───────────────────────────────────────────────── */
@@ -130,6 +166,16 @@ function SettingsIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function UsageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="20" x2="12" y2="10" />
+      <line x1="18" y1="20" x2="18" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="16" />
     </svg>
   );
 }
@@ -257,6 +303,7 @@ const RAIL_ITEMS = [
   { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'saved', label: 'Saved prompts', icon: StarIcon },
   { id: 'templates', label: 'Templates', icon: TemplatesIcon },
+  { id: 'usage', label: 'Usage & cost', icon: UsageIcon },
   { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -569,6 +616,167 @@ function TemplatesView({ onSelect }) {
   );
 }
 
+function UsageView({ usage, onClear }) {
+  // Pre-compute aggregates using useMemo so this doesn't recompute on every
+  // unrelated re-render.
+  const stats = useMemo(() => {
+    if (!usage || usage.length === 0) return null;
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const weekMs = 7 * dayMs;
+    const monthMs = 30 * dayMs;
+
+    let last24h = { count: 0, cost: 0, tokens: 0 };
+    let last7d = { count: 0, cost: 0, tokens: 0 };
+    let last30d = { count: 0, cost: 0, tokens: 0 };
+    let allTime = { count: 0, cost: 0, tokens: 0 };
+
+    const byModel = {};
+    const byDay = {};
+
+    let totalLatency = 0;
+    let latencyCount = 0;
+
+    for (const record of usage) {
+      const age = now - record.timestamp;
+      const tokens = (record.inputTokens || 0) + (record.outputTokens || 0);
+      const cost = record.costUSD || 0;
+
+      allTime.count++;
+      allTime.cost += cost;
+      allTime.tokens += tokens;
+      if (age <= dayMs) { last24h.count++; last24h.cost += cost; last24h.tokens += tokens; }
+      if (age <= weekMs) { last7d.count++; last7d.cost += cost; last7d.tokens += tokens; }
+      if (age <= monthMs) { last30d.count++; last30d.cost += cost; last30d.tokens += tokens; }
+
+      if (record.latencyMs) {
+        totalLatency += record.latencyMs;
+        latencyCount++;
+      }
+
+      const modelKey = record.model || 'unknown';
+      if (!byModel[modelKey]) byModel[modelKey] = { count: 0, cost: 0, tokens: 0 };
+      byModel[modelKey].count++;
+      byModel[modelKey].cost += cost;
+      byModel[modelKey].tokens += tokens;
+
+      const dayKey = new Date(record.timestamp).toISOString().slice(0, 10);
+      if (!byDay[dayKey]) byDay[dayKey] = { count: 0, cost: 0 };
+      byDay[dayKey].count++;
+      byDay[dayKey].cost += cost;
+    }
+
+    const avgLatency = latencyCount > 0 ? totalLatency / latencyCount : null;
+    const modelEntries = Object.entries(byModel)
+      .map(([model, stats]) => ({ model, ...stats }))
+      .sort((a, b) => b.cost - a.cost);
+
+    // Last 7 days, oldest first, filling in missing days as zero
+    const dayEntries = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayKey = new Date(now - i * dayMs).toISOString().slice(0, 10);
+      const data = byDay[dayKey] || { count: 0, cost: 0 };
+      dayEntries.push({ day: dayKey, ...data });
+    }
+    const maxDayCost = Math.max(0.001, ...dayEntries.map(d => d.cost));
+
+    return { last24h, last7d, last30d, allTime, avgLatency, modelEntries, dayEntries, maxDayCost };
+  }, [usage]);
+
+  if (!stats) {
+    return (
+      <>
+        <div className="drawer-head">
+          <h3>Usage & cost</h3>
+        </div>
+        <div className="drawer-body">
+          <div className="drawer-empty">
+            Your usage and cost will appear here after your first refinement.
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Usage & cost</h3>
+        <button className="text-btn" onClick={onClear} title="Reset usage tracking">
+          Reset
+        </button>
+      </div>
+      <div className="drawer-body usage-body">
+        <div className="usage-disclaimer">
+          Cost estimates based on Anthropic's published rates (May 2026). Final billing is via your Anthropic Console.
+        </div>
+
+        <div className="usage-totals">
+          <div className="usage-total">
+            <div className="usage-total-label">Today</div>
+            <div className="usage-total-value">{formatCost(stats.last24h.cost) || '—'}</div>
+            <div className="usage-total-meta">{stats.last24h.count} {stats.last24h.count === 1 ? 'call' : 'calls'}</div>
+          </div>
+          <div className="usage-total">
+            <div className="usage-total-label">7 days</div>
+            <div className="usage-total-value">{formatCost(stats.last7d.cost) || '—'}</div>
+            <div className="usage-total-meta">{stats.last7d.count} {stats.last7d.count === 1 ? 'call' : 'calls'}</div>
+          </div>
+          <div className="usage-total">
+            <div className="usage-total-label">30 days</div>
+            <div className="usage-total-value">{formatCost(stats.last30d.cost) || '—'}</div>
+            <div className="usage-total-meta">{stats.last30d.count} {stats.last30d.count === 1 ? 'call' : 'calls'}</div>
+          </div>
+        </div>
+
+        <div className="usage-section">
+          <div className="usage-section-label">Last 7 days</div>
+          <div className="usage-chart">
+            {stats.dayEntries.map((day) => {
+              const heightPct = stats.maxDayCost > 0 ? (day.cost / stats.maxDayCost) * 100 : 0;
+              const dayShort = new Date(day.day).toLocaleDateString(undefined, { weekday: 'short' });
+              return (
+                <div key={day.day} className="usage-chart-bar" title={`${day.day}: ${formatCost(day.cost) || '$0'} · ${day.count} ${day.count === 1 ? 'call' : 'calls'}`}>
+                  <div className="usage-chart-bar-fill" style={{ height: `${heightPct}%` }} />
+                  <div className="usage-chart-bar-label">{dayShort}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="usage-section">
+          <div className="usage-section-label">By model</div>
+          <div className="usage-models">
+            {stats.modelEntries.map((entry) => (
+              <div key={entry.model} className="usage-model-row">
+                <span className="usage-model-name">{modelShortName(entry.model)}</span>
+                <span className="usage-model-meta">{entry.count} {entry.count === 1 ? 'call' : 'calls'}</span>
+                <span className="usage-model-cost">{formatCost(entry.cost) || '$0'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {stats.avgLatency !== null && (
+          <div className="usage-section">
+            <div className="usage-section-label">Performance</div>
+            <div className="usage-perf-row">
+              <span className="usage-perf-label">Average latency</span>
+              <span className="usage-perf-value">{formatLatency(Math.round(stats.avgLatency))}</span>
+            </div>
+            <div className="usage-perf-row">
+              <span className="usage-perf-label">Total tokens (input + output)</span>
+              <span className="usage-perf-value">{stats.allTime.tokens.toLocaleString()}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function HelpView() {
   const [activeSection, setActiveSection] = useState(HELP_CONTENT[0].id);
 
@@ -646,24 +854,32 @@ function SettingsView({ settings, onChange, onReset }) {
 
           <div className="model-section-label">Anthropic</div>
           <div className="model-list">
-            {claudeModels.map((m) => (
-              <button
-                key={m.id}
-                className={`model-card ${settings.model === m.id ? 'selected' : ''}`}
-                onClick={() => onChange({ model: m.id })}
-              >
-                <div className="model-card-main">
-                  <div className="model-card-name">
-                    {m.name}
-                    {m.isDefault && <span className="model-default-badge">Default</span>}
+            {claudeModels.map((m) => {
+              const rates = PRICING[m.id];
+              return (
+                <button
+                  key={m.id}
+                  className={`model-card ${settings.model === m.id ? 'selected' : ''}`}
+                  onClick={() => onChange({ model: m.id })}
+                >
+                  <div className="model-card-main">
+                    <div className="model-card-name">
+                      {m.name}
+                      {m.isDefault && <span className="model-default-badge">Default</span>}
+                    </div>
+                    <div className="model-card-desc">{m.description}</div>
+                    {rates && (
+                      <div className="model-card-pricing">
+                        ${rates.input.toFixed(2)} input / ${rates.output.toFixed(2)} output per MTok
+                      </div>
+                    )}
                   </div>
-                  <div className="model-card-desc">{m.description}</div>
-                </div>
-                <div className="model-radio">
-                  {settings.model === m.id && <CheckIcon />}
-                </div>
-              </button>
-            ))}
+                  <div className="model-radio">
+                    {settings.model === m.id && <CheckIcon />}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="model-section-label muted">Coming soon</div>
@@ -692,7 +908,6 @@ function SettingsView({ settings, onChange, onReset }) {
 function ImportExportModal({ history, saved, onClose, onImport }) {
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
-  // importStatus shape: { kind: 'success' | 'error' | 'loading', message: string }
 
   function handleExport(format) {
     if (history.length === 0 && saved.length === 0) {
@@ -747,7 +962,6 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
         message: err.message || 'Import failed. Please check the file and try again.',
       });
     } finally {
-      // Reset the input so selecting the same file again triggers onChange
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -1146,6 +1360,7 @@ function ComparisonColumn({ column, onUseVersion }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const refinedAvg = averageScore(column.scores?.refined);
+  const cost = column.usage ? computeCost(column.modelId, column.usage) : null;
 
   async function handleCopy() {
     await navigator.clipboard.writeText(column.refined);
@@ -1190,6 +1405,13 @@ function ComparisonColumn({ column, onUseVersion }) {
       {column.complete && column.scores?.refined && (
         <div className="compare-col-chart">
           <RadarChart scoreSet={column.scores.refined} variant="refined" size="small" />
+        </div>
+      )}
+
+      {column.complete && (cost !== null || column.latencyMs) && (
+        <div className="compare-col-meta">
+          {cost !== null && <span className="compare-col-cost">{formatCost(cost)}</span>}
+          {column.latencyMs && <span className="compare-col-latency">{formatLatency(column.latencyMs)}</span>}
         </div>
       )}
 
@@ -1241,7 +1463,7 @@ function ComparisonColumn({ column, onUseVersion }) {
   );
 }
 
-function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScores, primaryChanges, onUseVersion }) {
+function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScores, primaryChanges, primaryUsage, primaryLatencyMs, onUseVersion }) {
   if (!comparison) return null;
 
   const primaryColumn = {
@@ -1249,6 +1471,8 @@ function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScor
     refined: primaryRefined,
     scores: primaryScores,
     changes: primaryChanges,
+    usage: primaryUsage,
+    latencyMs: primaryLatencyMs,
     complete: true,
     isPrimary: true,
   };
@@ -1410,7 +1634,7 @@ async function streamComparison({ url, body, onStart, onModelChunk, onModelChang
     'model-chunk': (p) => onModelChunk?.(p.modelId, p.text),
     'model-changes': (p) => onModelChanges?.(p.modelId, p.changes || []),
     'model-scores': (p) => onModelScores?.(p.modelId, p.scores || null),
-    'model-done': (p) => onModelDone?.(p.modelId),
+    'model-done': (p) => onModelDone?.(p.modelId, p.usage, p.latencyMs),
     'model-error': (p) => onModelError?.(p.modelId, p.error),
     'compare-done': () => onDone?.(),
     'error': (p) => onError?.(p.error || 'Unknown error'),
@@ -1428,6 +1652,10 @@ function App() {
   const [changes, setChanges] = useState([]);
   const [scores, setScores] = useState(null);
   const [primaryModel, setPrimaryModel] = useState(DEFAULT_MODEL);
+  // Usage data for the CURRENT refinement (input/output tokens + latency).
+  // Used to display cost/latency next to the refined prompt's model badge.
+  const [primaryUsage, setPrimaryUsage] = useState(null);
+  const [primaryLatencyMs, setPrimaryLatencyMs] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -1438,12 +1666,13 @@ function App() {
   const [history, setHistory] = useState([]);
   const [saved, setSaved] = useState([]);
   const [currentSavedId, setCurrentSavedId] = useState(null);
-
-  // Sidebar always starts CLOSED on every page load. No persistence.
   const [activeView, setActiveView] = useState(null);
-
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [importExportOpen, setImportExportOpen] = useState(false);
+  // Aggregate usage records — appended on every refinement/comparison-column
+  // completion. Capped at MAX_USAGE_RECORDS records to keep localStorage small.
+  const [usage, setUsage] = useState([]);
+
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
@@ -1467,9 +1696,13 @@ function App() {
       try { setSaved(JSON.parse(savedStarred)); }
       catch { setSaved([]); }
     }
+    const savedUsage = localStorage.getItem(STORAGE_USAGE);
+    if (savedUsage) {
+      try { setUsage(JSON.parse(savedUsage)); }
+      catch { setUsage([]); }
+    }
   }, []);
 
-  // Close modal on Escape
   useEffect(() => {
     if (!importExportOpen) return;
     function onEsc(e) {
@@ -1500,6 +1733,33 @@ function App() {
     localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
   }
 
+  // Append a usage record. Always cap at MAX_USAGE_RECORDS so localStorage
+  // stays well within the 5MB quota.
+  function recordUsage({ model, usage: u, latencyMs, kind }) {
+    if (!u || (u.inputTokens === 0 && u.outputTokens === 0)) return;
+    const cost = computeCost(model, u);
+    const record = {
+      timestamp: Date.now(),
+      model,
+      inputTokens: u.inputTokens || 0,
+      outputTokens: u.outputTokens || 0,
+      costUSD: cost,
+      latencyMs: latencyMs || null,
+      kind: kind || 'refinement',
+    };
+    setUsage((prev) => {
+      const next = [record, ...prev].slice(0, MAX_USAGE_RECORDS);
+      localStorage.setItem(STORAGE_USAGE, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function clearUsage() {
+    if (!confirm('Reset all usage tracking? This cannot be undone.')) return;
+    setUsage([]);
+    localStorage.removeItem(STORAGE_USAGE);
+  }
+
   function saveToHistory(entry) {
     const updated = [entry, ...history].slice(0, MAX_HISTORY);
     setHistory(updated);
@@ -1516,6 +1776,8 @@ function App() {
     setImprovedPrompt('');
     setChanges([]);
     setScores(null);
+    setPrimaryUsage(null);
+    setPrimaryLatencyMs(null);
     setComparison(null);
     setRefinedComplete(false);
     setCurrentSavedId(null);
@@ -1531,6 +1793,8 @@ function App() {
     setChanges(entry.changes || []);
     setScores(entry.scores || null);
     setPrimaryModel(entry.model || DEFAULT_MODEL);
+    setPrimaryUsage(entry.usage || null);
+    setPrimaryLatencyMs(entry.latencyMs || null);
     setComparison(entry.comparison || null);
     setRefinedComplete(true);
     setError('');
@@ -1562,6 +1826,8 @@ function App() {
     setChanges(entry.changes || []);
     setScores(entry.scores || null);
     setPrimaryModel(entry.model || DEFAULT_MODEL);
+    setPrimaryUsage(entry.usage || null);
+    setPrimaryLatencyMs(entry.latencyMs || null);
     setComparison(entry.comparison || null);
     setRefinedComplete(true);
     setError('');
@@ -1593,6 +1859,8 @@ function App() {
       scores,
       category,
       model: primaryModel,
+      usage: primaryUsage,
+      latencyMs: primaryLatencyMs,
       comparison,
       savedAt: Date.now(),
     };
@@ -1620,13 +1888,8 @@ function App() {
     setActiveView(activeView === null ? 'history' : null);
   }
 
-  // ── Import handler ─────────────────────────────────────────
-  // Receives entries already validated, normalized, and deduplicated by io.js.
-  // We MERGE — appending imported entries to existing arrays — never overwrite.
   function handleImport(importedHistory, importedSaved) {
     if (importedHistory.length > 0) {
-      // Imported history entries go BEFORE the cap so the user keeps their newest.
-      // Then trim to MAX_HISTORY at the end.
       const next = [...history, ...importedHistory].slice(0, MAX_HISTORY);
       setHistory(next);
       localStorage.setItem(STORAGE_HISTORY, JSON.stringify(next));
@@ -1648,6 +1911,8 @@ function App() {
     setCopied(false);
     setCurrentSavedId(null);
     setComparison(null);
+    setPrimaryUsage(null);
+    setPrimaryLatencyMs(null);
 
     const previousRefined = feedback ? improvedPrompt : null;
 
@@ -1670,6 +1935,8 @@ function App() {
     let accumulatedRefined = '';
     let accumulatedChanges = [];
     let accumulatedScores = null;
+    let accumulatedUsage = null;
+    let accumulatedLatency = null;
 
     try {
       await streamRefinement({
@@ -1696,7 +1963,15 @@ function App() {
           accumulatedScores = received;
           setScores(received);
         },
-        onDone: () => {
+        onDone: (payload) => {
+          if (payload?.usage) {
+            accumulatedUsage = payload.usage;
+            setPrimaryUsage(payload.usage);
+          }
+          if (payload?.latencyMs) {
+            accumulatedLatency = payload.latencyMs;
+            setPrimaryLatencyMs(payload.latencyMs);
+          }
           if (accumulatedRefined) {
             saveToHistory({
               rough: sourcePrompt,
@@ -1705,9 +1980,18 @@ function App() {
               scores: accumulatedScores,
               category,
               model: settings.model,
+              usage: accumulatedUsage,
+              latencyMs: accumulatedLatency,
               timestamp: Date.now(),
               isFollowUp: Boolean(feedback),
               feedback: feedback || undefined,
+            });
+            // Record this refinement in the usage log
+            recordUsage({
+              model: settings.model,
+              usage: accumulatedUsage,
+              latencyMs: accumulatedLatency,
+              kind: feedback ? 'follow-up' : 'refinement',
             });
           }
         },
@@ -1737,6 +2021,8 @@ function App() {
       refined: '',
       changes: [],
       scores: null,
+      usage: null,
+      latencyMs: null,
       complete: false,
       error: null,
     }));
@@ -1774,8 +2060,21 @@ function App() {
         onModelScores: (modelId, modelScores) => {
           updateColumn(modelId, { scores: modelScores });
         },
-        onModelDone: (modelId) => {
-          updateColumn(modelId, { complete: true });
+        onModelDone: (modelId, modelUsage, modelLatencyMs) => {
+          updateColumn(modelId, {
+            complete: true,
+            usage: modelUsage || null,
+            latencyMs: modelLatencyMs || null,
+          });
+          // Record each comparison column as its own usage event
+          if (modelUsage) {
+            recordUsage({
+              model: modelId,
+              usage: modelUsage,
+              latencyMs: modelLatencyMs,
+              kind: 'comparison',
+            });
+          }
         },
         onModelError: (modelId, errMsg) => {
           updateColumn(modelId, { error: errMsg, complete: true });
@@ -1812,6 +2111,8 @@ function App() {
     setChanges(column.changes || []);
     setScores(column.scores || null);
     setPrimaryModel(column.modelId);
+    setPrimaryUsage(column.usage || null);
+    setPrimaryLatencyMs(column.latencyMs || null);
     setComparison(null);
     setCurrentSavedId(null);
   }
@@ -1842,7 +2143,6 @@ function App() {
     }
   }
 
-  // Derived UI flags
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
@@ -1852,6 +2152,8 @@ function App() {
   const showScoresSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && !scores;
   const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && changes.length > 0 && scores !== null;
   const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && changes.length > 0 && scores !== null;
+
+  const primaryCost = primaryUsage ? computeCost(primaryModel, primaryUsage) : null;
 
   return (
     <div className="shell">
@@ -1905,6 +2207,9 @@ function App() {
           )}
           {activeView === 'templates' && (
             <TemplatesView onSelect={loadFromTemplate} />
+          )}
+          {activeView === 'usage' && (
+            <UsageView usage={usage} onClear={clearUsage} />
           )}
           {activeView === 'help' && <HelpView />}
           {activeView === 'settings' && (
@@ -1961,6 +2266,16 @@ function App() {
                   <span className="message-label">
                     Refined prompt
                     <span className="primary-model-tag">{modelShortName(primaryModel)}</span>
+                    {primaryCost !== null && (
+                      <span className="primary-cost-tag" title="Estimated cost based on token usage">
+                        {formatCost(primaryCost)}
+                      </span>
+                    )}
+                    {primaryLatencyMs !== null && (
+                      <span className="primary-latency-tag" title="Time to complete this refinement">
+                        {formatLatency(primaryLatencyMs)}
+                      </span>
+                    )}
                     {streaming && <span className="streaming-pulse" />}
                   </span>
                   <div className="message-actions">
@@ -2010,6 +2325,8 @@ function App() {
                 primaryRefined={improvedPrompt}
                 primaryScores={scores}
                 primaryChanges={changes}
+                primaryUsage={primaryUsage}
+                primaryLatencyMs={primaryLatencyMs}
                 onUseVersion={useComparisonVersion}
               />
             )}

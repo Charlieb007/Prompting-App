@@ -121,12 +121,6 @@ button:disabled { cursor: not-allowed; }
 
 .rail-spacer { flex: 1; }
 
-/* ── Drawer (sidebar) ─────────────────────────────────────
-   Drawer is CLOSED by default — width:0, no border, contents hidden.
-   The .open class on the wrapper is what reveals it.
-   The .closed class is also explicit (belt-and-suspenders) so even if
-   the JS class assignment ever has a glitch, default styling is closed. */
-
 .drawer {
   width: 0;
   flex-shrink: 0;
@@ -217,6 +211,12 @@ button:disabled { cursor: not-allowed; }
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.drawer-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .drawer-body { flex: 1; overflow-y: auto; padding: 10px 8px; }
@@ -442,6 +442,18 @@ button:disabled { cursor: not-allowed; }
 .model-card.selected .model-card-name { color: var(--accent-text); }
 .model-card-desc { font-size: 11.5px; color: var(--text-secondary); line-height: 1.4; }
 
+.model-card-pricing {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.model-card.selected .model-card-pricing {
+  color: var(--accent-text);
+  opacity: 0.85;
+}
+
 .model-default-badge {
   font-size: 9px; font-weight: 600;
   color: var(--accent-text); background: var(--accent-bg);
@@ -471,6 +483,180 @@ button:disabled { cursor: not-allowed; }
 
 .model-card.selected .model-radio {
   background: var(--accent); border-color: var(--accent); color: white;
+}
+
+.usage-body {
+  padding: 14px 16px 24px;
+}
+
+.usage-disclaimer {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  background: var(--bg-canvas);
+  border-left: 2px solid var(--border-soft);
+  padding: 8px 10px;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  margin-bottom: 18px;
+}
+
+.usage-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.usage-total {
+  background: var(--bg-canvas);
+  border: 0.5px solid var(--border-faint);
+  border-radius: var(--r-md);
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.usage-total-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.usage-total-value {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-total-meta {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-section {
+  margin-bottom: 20px;
+}
+
+.usage-section:last-child {
+  margin-bottom: 0;
+}
+
+.usage-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.usage-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  height: 80px;
+  padding: 0 2px;
+}
+
+.usage-chart-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  cursor: help;
+}
+
+.usage-chart-bar-fill {
+  width: 100%;
+  background: var(--accent);
+  opacity: 0.7;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  margin-top: auto;
+  transition: opacity 0.15s ease;
+}
+
+.usage-chart-bar:hover .usage-chart-bar-fill {
+  opacity: 1;
+}
+
+.usage-chart-bar-label {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.usage-models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.usage-model-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--bg-canvas);
+  border: 0.5px solid var(--border-faint);
+  border-radius: var(--r-md);
+}
+
+.usage-model-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.usage-model-meta {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-model-cost {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+}
+
+.usage-perf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--border-faint);
+}
+
+.usage-perf-row:last-child {
+  border-bottom: none;
+}
+
+.usage-perf-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.usage-perf-value {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -571,6 +757,26 @@ button:disabled { cursor: not-allowed; }
   padding: 2px 7px;
   border-radius: 3px;
   border: 0.5px solid rgba(205, 111, 71, 0.20);
+}
+
+.primary-cost-tag,
+.primary-latency-tag {
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 0.5px solid var(--border-soft);
+}
+
+.primary-cost-tag {
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+}
+
+.primary-latency-tag {
+  color: var(--text-tertiary);
+  background: transparent;
 }
 
 .streaming-pulse {
@@ -1271,12 +1477,26 @@ button:disabled { cursor: not-allowed; }
   border-top: 0.5px solid var(--border-faint);
 }
 
-/* ── Comparison action buttons ────────────────────────────
-   These buttons MUST always show their full label text on a single line.
-   The label is wrapped in <span> children inside each button. The button
-   itself never has flex:1 (which caused shrinkage), never has overflow:hidden,
-   never has text-overflow:ellipsis. Buttons are stacked vertically so each
-   has the full column width to work with. */
+.compare-col-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0 8px;
+  border-top: 0.5px solid var(--border-faint);
+  margin-top: 4px;
+}
+
+.compare-col-cost,
+.compare-col-latency {
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.compare-col-cost {
+  color: var(--text-secondary);
+}
 
 .compare-col-actions {
   display: flex;
@@ -1648,8 +1868,6 @@ button:disabled { cursor: not-allowed; }
   line-height: 1.45;
 }
 
-/* ── Skeleton screens ────────────────────────────────────── */
-
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
@@ -1742,16 +1960,6 @@ button:disabled { cursor: not-allowed; }
   gap: 6px;
   padding: 8px 0;
 }
-
-/* ── Drawer head with multiple action buttons ─────────────── */
-
-.drawer-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ── Import/Export modal ──────────────────────────────────── */
 
 .modal-backdrop {
   position: fixed;
@@ -1991,7 +2199,7 @@ button:disabled { cursor: not-allowed; }
 .modal-status-error {
   background: var(--error-bg);
   color: var(--error);
-  border: 0.5px solid var(--error-border);
+  border: 0.5px solid var(--border-soft);
 }
 
 .modal-status-loading {
