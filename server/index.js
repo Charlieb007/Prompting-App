@@ -172,11 +172,6 @@ function parsePayload(payloadRaw) {
   return { changes, scores };
 }
 
-/**
- * Stream a single refinement run.
- * Returns refined text, changes, scores, AND usage data (input/output tokens)
- * and latencyMs. Usage is needed by the client to compute and display cost.
- */
 async function runRefinement({ model, system, userContent, onChunk, onRefinedDone }) {
   const startTime = Date.now();
 
@@ -227,8 +222,6 @@ async function runRefinement({ model, system, userContent, onChunk, onRefinedDon
     onRefinedDone?.();
   }
 
-  // After the stream completes, retrieve the final message to access usage.
-  // The SDK's stream object holds onto this for us.
   const finalMessage = await stream.finalMessage();
   const usage = finalMessage.usage
     ? {
@@ -241,6 +234,39 @@ async function runRefinement({ model, system, userContent, onChunk, onRefinedDon
   const { changes, scores } = parsePayload(payloadRaw);
 
   return { refined: refinedSoFar, changes, scores, usage, latencyMs };
+}
+
+/**
+ * Run a prompt directly (no refinement, no scoring). Used by /api/test-prompt
+ * to send a prompt to a model as if it were a real prompt to execute.
+ * Streams text back. Returns usage and latency at the end.
+ */
+async function runRawPrompt({ model, prompt, onChunk }) {
+  const startTime = Date.now();
+
+  const stream = await anthropic.messages.stream({
+    model,
+    max_tokens: 2200,
+    // No system prompt. The refined prompt IS the prompt.
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      onChunk?.(event.delta.text);
+    }
+  }
+
+  const finalMessage = await stream.finalMessage();
+  const usage = finalMessage.usage
+    ? {
+        inputTokens: finalMessage.usage.input_tokens || 0,
+        outputTokens: finalMessage.usage.output_tokens || 0,
+      }
+    : { inputTokens: 0, outputTokens: 0 };
+
+  const latencyMs = Date.now() - startTime;
+  return { usage, latencyMs };
 }
 
 app.get('/api/health', (req, res) => {
@@ -280,7 +306,6 @@ app.post('/api/improve', async (req, res) => {
 
     send('changes', { changes });
     send('scores', { scores });
-    // Usage data is bundled into the 'done' event so the client can record it.
     send('done', { modelUsed: safeModel, usage, latencyMs });
     res.end();
   } catch (error) {
@@ -343,8 +368,6 @@ app.post('/api/improve-compare', async (req, res) => {
       });
       await send('model-changes', { modelId, changes });
       await send('model-scores', { modelId, scores });
-      // Per-model usage is included in the model-done event so each column
-      // can record its own cost contribution.
       await send('model-done', { modelId, usage, latencyMs });
     } catch (error) {
       console.error(`Model ${modelId} failed:`, error);
@@ -354,6 +377,73 @@ app.post('/api/improve-compare', async (req, res) => {
 
   await Promise.allSettled(runs);
   await send('compare-done', {});
+  res.end();
+});
+
+/**
+ * Test endpoint. Takes one or two prompts and runs each through the chosen
+ * model directly — no refinement, no scoring, no system prompt.
+ * Used for A/B testing whether a refined prompt actually produces better
+ * real-world output than the rough version.
+ *
+ * Body: { prompts: [{ id, prompt }], model }
+ * Streams events keyed by the prompt's id so the client can show outputs
+ * side by side as they arrive.
+ */
+app.post('/api/test-prompt', async (req, res) => {
+  const { prompts, model } = req.body;
+
+  if (!Array.isArray(prompts) || prompts.length === 0) {
+    return res.status(400).json({ error: 'At least one prompt is required.' });
+  }
+
+  if (prompts.length > 2) {
+    return res.status(400).json({ error: 'Maximum 2 prompts per test.' });
+  }
+
+  for (const p of prompts) {
+    if (!p.id || typeof p.prompt !== 'string' || !p.prompt.trim()) {
+      return res.status(400).json({ error: 'Each prompt needs an id and non-empty text.' });
+    }
+  }
+
+  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  let writeChain = Promise.resolve();
+  function send(event, data) {
+    writeChain = writeChain.then(() => {
+      try {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        // Client disconnect
+      }
+    });
+    return writeChain;
+  }
+
+  send('test-start', { model: safeModel, count: prompts.length });
+
+  const runs = prompts.map(async (p) => {
+    try {
+      const { usage, latencyMs } = await runRawPrompt({
+        model: safeModel,
+        prompt: p.prompt,
+        onChunk: (text) => send('test-chunk', { id: p.id, text }),
+      });
+      await send('test-done', { id: p.id, usage, latencyMs });
+    } catch (error) {
+      console.error(`Test for ${p.id} failed:`, error);
+      await send('test-error', { id: p.id, error: 'Test run failed.' });
+    }
+  });
+
+  await Promise.allSettled(runs);
+  await send('test-complete', {});
   res.end();
 });
 

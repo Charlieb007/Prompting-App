@@ -61,6 +61,7 @@ const DEFAULT_SETTINGS = {
   model: DEFAULT_MODEL,
   linterEnabled: true,
   piiScannerEnabled: true,
+  testModel: DEFAULT_MODEL,
 };
 
 function formatTime(timestamp) {
@@ -320,6 +321,14 @@ function ContactIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3" />
     </svg>
   );
 }
@@ -1063,7 +1072,7 @@ function SettingsView({ settings, onChange, onReset }) {
         <div className="settings-divider" />
 
         <div className="settings-group">
-          <div className="settings-group-label">Model</div>
+          <div className="settings-group-label">Refinement model</div>
           <div className="settings-group-hint">
             Choose which AI model refines your prompts. Claude Sonnet 4.6 is the default.
           </div>
@@ -1111,6 +1120,33 @@ function SettingsView({ settings, onChange, onReset }) {
                 </div>
                 <div className="model-radio" />
               </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-group">
+          <div className="settings-group-label">Test runner model</div>
+          <div className="settings-group-hint">
+            Which model executes prompts during A/B testing. Independent from the refinement model — pick based on the actual task complexity.
+          </div>
+
+          <div className="model-list">
+            {claudeModels.map((m) => (
+              <button
+                key={m.id}
+                className={`model-card ${settings.testModel === m.id ? 'selected' : ''}`}
+                onClick={() => onChange({ testModel: m.id })}
+              >
+                <div className="model-card-main">
+                  <div className="model-card-name">{m.name}</div>
+                  <div className="model-card-desc">{m.description}</div>
+                </div>
+                <div className="model-radio">
+                  {settings.testModel === m.id && <CheckIcon />}
+                </div>
+              </button>
             ))}
           </div>
         </div>
@@ -1715,6 +1751,194 @@ function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScor
   );
 }
 
+/* ── A/B Test panel ──────────────────────────────────────── */
+
+function ABTestInvite({ disabled, onOpen }) {
+  return (
+    <button
+      type="button"
+      className="abtest-invite-btn"
+      onClick={onOpen}
+      disabled={disabled}
+    >
+      <PlayIcon />
+      <span>Test this refined prompt (A/B vs rough)</span>
+      <span className="abtest-chevron"><ChevronDownIcon /></span>
+    </button>
+  );
+}
+
+function ABTestPanel({
+  roughPrompt,
+  refinedPrompt,
+  testModel,
+  onClose,
+  onRun,
+  test,
+  busy,
+}) {
+  const [mode, setMode] = useState('both'); // 'both' | 'refined-only'
+
+  const handleRun = () => {
+    onRun(mode);
+  };
+
+  const showResults = test && (test.rough.text || test.refined.text || test.rough.complete || test.refined.complete);
+
+  return (
+    <div className="abtest-panel">
+      <div className="abtest-panel-head">
+        <div>
+          <div className="abtest-panel-label">A/B Test</div>
+          <div className="abtest-panel-hint">
+            Run the {mode === 'both' ? 'rough and refined prompts' : 'refined prompt'} through {modelShortName(testModel)} to see what the actual output looks like.
+          </div>
+        </div>
+        <button
+          className="abtest-close-btn"
+          onClick={onClose}
+          disabled={busy}
+          aria-label="Close A/B test panel"
+          title="Close"
+        >
+          <CloseIcon />
+        </button>
+      </div>
+
+      {!showResults && (
+        <>
+          <div className="abtest-mode-row">
+            <button
+              type="button"
+              className={`abtest-mode-btn ${mode === 'both' ? 'active' : ''}`}
+              onClick={() => setMode('both')}
+              disabled={busy}
+            >
+              Run both (rough + refined)
+            </button>
+            <button
+              type="button"
+              className={`abtest-mode-btn ${mode === 'refined-only' ? 'active' : ''}`}
+              onClick={() => setMode('refined-only')}
+              disabled={busy}
+            >
+              Refined only
+            </button>
+          </div>
+
+          <div className="abtest-cost-note">
+            {mode === 'both'
+              ? `Two API calls to ${modelShortName(testModel)}. Cost depends on output length.`
+              : `One API call to ${modelShortName(testModel)}.`}
+            {' '}You can change the test runner model in Settings.
+          </div>
+
+          <div className="abtest-actions">
+            <button
+              type="button"
+              className="abtest-run-btn"
+              onClick={handleRun}
+              disabled={busy}
+            >
+              {busy ? 'Running…' : `Run test (${mode === 'both' ? '2' : '1'} call${mode === 'both' ? 's' : ''})`}
+            </button>
+          </div>
+        </>
+      )}
+
+      {showResults && (
+        <ABTestResults
+          test={test}
+          mode={test.mode}
+          testModel={testModel}
+        />
+      )}
+    </div>
+  );
+}
+
+function ABTestResults({ test, mode, testModel }) {
+  return (
+    <div className="abtest-results">
+      <div className="abtest-results-header">
+        Output from <strong>{modelShortName(testModel)}</strong>. Compare side by side to decide if the refinement was worth it.
+      </div>
+
+      <div className={`abtest-results-grid ${mode === 'refined-only' ? 'single' : ''}`}>
+        {mode === 'both' && (
+          <ABTestColumn
+            title="From rough prompt"
+            variant="rough"
+            result={test.rough}
+            modelId={testModel}
+          />
+        )}
+        <ABTestColumn
+          title="From refined prompt"
+          variant="refined"
+          result={test.refined}
+          modelId={testModel}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ABTestColumn({ title, variant, result, modelId }) {
+  const [copied, setCopied] = useState(false);
+  const cost = result.usage ? computeCost(modelId, result.usage) : null;
+
+  async function handleCopy() {
+    if (!result.text) return;
+    await navigator.clipboard.writeText(result.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <div className={`abtest-col abtest-col-${variant}`}>
+      <div className="abtest-col-head">
+        <span className={`abtest-col-title abtest-col-title-${variant}`}>{title}</span>
+        {!result.complete && result.text && <span className="streaming-pulse" />}
+      </div>
+
+      {result.error ? (
+        <div className="abtest-col-error">{result.error}</div>
+      ) : result.text ? (
+        <div className="abtest-col-body">
+          {result.text}
+          {!result.complete && <span className="caret" />}
+        </div>
+      ) : (
+        <div className="abtest-col-waiting">
+          <span className="thinking-dots">
+            <span className="thinking-dot"></span>
+            <span className="thinking-dot"></span>
+            <span className="thinking-dot"></span>
+          </span>
+          <span>Waiting for response…</span>
+        </div>
+      )}
+
+      {result.complete && !result.error && (
+        <div className="abtest-col-foot">
+          <div className="abtest-col-meta">
+            {cost !== null && <span className="abtest-col-cost">{formatCost(cost)}</span>}
+            {result.latencyMs && <span className="abtest-col-latency">{formatLatency(result.latencyMs)}</span>}
+          </div>
+          <button
+            type="button"
+            className="abtest-col-copy"
+            onClick={handleCopy}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FollowUpPanel({ disabled, onSubmit }) {
   const [feedback, setFeedback] = useState('');
 
@@ -1856,6 +2080,24 @@ async function streamComparison({ url, body, onStart, onModelChunk, onModelChang
   });
 }
 
+async function streamTest({ url, body, onChunk, onDone, onError, onComplete, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'test-start': () => { /* noop */ },
+    'test-chunk': (p) => onChunk?.(p.id, p.text),
+    'test-done': (p) => onDone?.(p.id, p.usage, p.latencyMs),
+    'test-error': (p) => onError?.(p.id, p.error),
+    'test-complete': () => onComplete?.(),
+    'error': (p) => onError?.(null, p.error || 'Unknown error'),
+  });
+}
+
 /* ── App ─────────────────────────────────────────────────── */
 
 function App() {
@@ -1885,18 +2127,20 @@ function App() {
   const [usage, setUsage] = useState([]);
   const [lintHints, setLintHints] = useState([]);
   const [dismissedHints, setDismissedHints] = useState([]);
-
-  // PII scanner state. piiFindings holds detection results when the user has
-  // attempted to refine and the scanner flagged something. piiPendingFeedback
-  // remembers whether the pending submission was a follow-up (and what its
-  // feedback was) so we can resume it after user confirms.
   const [piiFindings, setPiiFindings] = useState(null);
   const [piiPendingFeedback, setPiiPendingFeedback] = useState(null);
+
+  // A/B test state. abTestOpen controls panel visibility. abTest holds
+  // the in-flight or completed test results.
+  const [abTestOpen, setAbTestOpen] = useState(false);
+  const [abTest, setAbTest] = useState(null);
+  const [abTesting, setAbTesting] = useState(false);
 
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
   const compareAbortRef = useRef(null);
+  const testAbortRef = useRef(null);
   const lintTimerRef = useRef(null);
 
   useEffect(() => {
@@ -1933,7 +2177,6 @@ function App() {
     return () => document.removeEventListener('keydown', onEsc);
   }, [importExportOpen]);
 
-  // Escape closes the PII modal (treats it as Cancel)
   useEffect(() => {
     if (!piiFindings) return;
     function onEsc(e) {
@@ -2033,10 +2276,12 @@ function App() {
     setComparison(null);
     setRefinedComplete(false);
     setCurrentSavedId(null);
+    setAbTest(null);
+    setAbTestOpen(false);
   }
 
   function loadFromHistory(entry) {
-    if (streaming || comparing) return;
+    if (streaming || comparing || abTesting) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback(entry.feedback || '');
@@ -2051,13 +2296,15 @@ function App() {
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(null);
+    setAbTest(null);
+    setAbTestOpen(false);
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
 
   function loadFromTemplate(template) {
-    if (streaming || comparing) return;
+    if (streaming || comparing || abTesting) return;
     setRoughPrompt(template.rough);
     setSubmittedPrompt('');
     setSubmittedFeedback('');
@@ -2069,7 +2316,7 @@ function App() {
   }
 
   function loadFromSaved(entry) {
-    if (streaming || comparing) return;
+    if (streaming || comparing || abTesting) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback('');
@@ -2084,6 +2331,8 @@ function App() {
     setRefinedComplete(true);
     setError('');
     setCurrentSavedId(entry.id);
+    setAbTest(null);
+    setAbTestOpen(false);
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -2156,8 +2405,6 @@ function App() {
     setDismissedHints((prev) => [...prev, hintId]);
   }
 
-  // The actual refinement work, extracted so PII confirmation can call it
-  // after the user clicks "Send anyway."
   async function executeRefinement({ feedback = null } = {}) {
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
     if (!sourcePrompt.trim() || streaming || comparing) return;
@@ -2171,6 +2418,8 @@ function App() {
     setComparison(null);
     setPrimaryUsage(null);
     setPrimaryLatencyMs(null);
+    setAbTest(null);
+    setAbTestOpen(false);
 
     const previousRefined = feedback ? improvedPrompt : null;
 
@@ -2267,8 +2516,6 @@ function App() {
     }
   }
 
-  // The gatekeeper. Runs PII scan first if enabled. If findings exist, opens
-  // the modal and stops. Otherwise, calls executeRefinement immediately.
   async function runRefinement({ feedback = null } = {}) {
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
     if (!sourcePrompt.trim() || streaming || comparing) return;
@@ -2403,6 +2650,108 @@ function App() {
     setCurrentSavedId(null);
   }
 
+  // ── A/B testing ────────────────────────────────────────────
+  // Run the rough prompt and refined prompt through the test model,
+  // streaming both responses in parallel. Each response gets recorded
+  // as a usage event for cost tracking.
+  async function runABTest(mode) {
+    if (!improvedPrompt || abTesting) return;
+
+    setAbTesting(true);
+
+    const initialTest = {
+      mode,
+      rough: { text: '', complete: false, error: null, usage: null, latencyMs: null },
+      refined: { text: '', complete: false, error: null, usage: null, latencyMs: null },
+    };
+    setAbTest(initialTest);
+
+    const prompts = [];
+    if (mode === 'both') {
+      prompts.push({ id: 'rough', prompt: submittedPrompt });
+    }
+    prompts.push({ id: 'refined', prompt: improvedPrompt });
+
+    // If refined-only, mark rough as not-applicable so the UI doesn't show
+    // an empty waiting state for a prompt we never sent.
+    if (mode === 'refined-only') {
+      initialTest.rough = null;
+    }
+
+    const controller = new AbortController();
+    testAbortRef.current = controller;
+
+    let working = { ...initialTest };
+
+    function updateResult(id, updates) {
+      working = {
+        ...working,
+        [id]: { ...(working[id] || {}), ...updates },
+      };
+      setAbTest(working);
+    }
+
+    try {
+      await streamTest({
+        url: `${API_URL}/api/test-prompt`,
+        body: {
+          prompts,
+          model: settings.testModel,
+        },
+        signal: controller.signal,
+        onChunk: (id, text) => {
+          const current = working[id] || {};
+          updateResult(id, { text: (current.text || '') + text });
+        },
+        onDone: (id, u, latencyMs) => {
+          updateResult(id, {
+            complete: true,
+            usage: u || null,
+            latencyMs: latencyMs || null,
+          });
+          if (u) {
+            recordUsage({
+              model: settings.testModel,
+              usage: u,
+              latencyMs,
+              kind: `test-${id}`,
+            });
+          }
+        },
+        onError: (id, errMsg) => {
+          if (id) {
+            updateResult(id, { complete: true, error: errMsg });
+          } else {
+            console.error('Test stream error:', errMsg);
+          }
+        },
+        onComplete: () => { /* noop */ },
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error(err);
+        setAbTest((prev) => prev ? { ...prev, fatalError: err.message } : null);
+      }
+    } finally {
+      setAbTesting(false);
+      testAbortRef.current = null;
+    }
+  }
+
+  function closeABTest() {
+    // If test is in flight, abort it
+    if (testAbortRef.current) {
+      testAbortRef.current.abort();
+    }
+    setAbTestOpen(false);
+    setAbTest(null);
+  }
+
+  function openABTest() {
+    setAbTestOpen(true);
+    setAbTest(null);
+  }
+
   function handleImprove() {
     runRefinement();
   }
@@ -2414,6 +2763,7 @@ function App() {
   function handleStop() {
     if (abortRef.current) abortRef.current.abort();
     if (compareAbortRef.current) compareAbortRef.current.abort();
+    if (testAbortRef.current) testAbortRef.current.abort();
   }
 
   async function handleCopy() {
@@ -2432,12 +2782,13 @@ function App() {
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
-  const busy = streaming || comparing;
+  const busy = streaming || comparing || abTesting;
   const isRefinementInProgress = Boolean(submittedPrompt) && !error && !comparing;
   const showChangesSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && changes.length === 0;
   const showScoresSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && !scores;
-  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && changes.length > 0 && scores !== null;
-  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && changes.length > 0 && scores !== null;
+  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
+  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
+  const showABTestInvite = Boolean(improvedPrompt) && refinedComplete && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
   const showLintHints = settings.linterEnabled && !busy && lintHints.length > 0;
 
   const primaryCost = primaryUsage ? computeCost(primaryModel, primaryUsage) : null;
@@ -2596,6 +2947,25 @@ function App() {
 
             {showScoresSkeleton && <ScoresSkeleton />}
             {scores && <ScoresPanel scores={scores} />}
+
+            {showABTestInvite && (
+              <ABTestInvite
+                disabled={busy}
+                onOpen={openABTest}
+              />
+            )}
+
+            {abTestOpen && (
+              <ABTestPanel
+                roughPrompt={submittedPrompt}
+                refinedPrompt={improvedPrompt}
+                testModel={settings.testModel}
+                onClose={closeABTest}
+                onRun={runABTest}
+                test={abTest}
+                busy={abTesting}
+              />
+            )}
 
             {showCompareInvite && (
               <CompareInvite
