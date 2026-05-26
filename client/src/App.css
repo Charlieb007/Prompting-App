@@ -160,6 +160,55 @@ button:disabled { cursor: not-allowed; }
 .sidebar-toggle:hover { background: var(--bg-subtle); color: var(--text-primary); }
 .sidebar-toggle svg { width: 16px; height: 16px; }
 
+/* New rough prompt button (mirrors claude.ai "New chat") */
+.sidebar-new-wrap {
+  padding: 4px 8px 6px;
+  flex-shrink: 0;
+}
+
+.sidebar-new-btn {
+  width: 100%; height: 34px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-secondary);
+  display: flex; align-items: center;
+  padding: 0 10px; gap: 8px;
+  cursor: pointer; text-align: left;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.sidebar-new-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-soft);
+}
+
+.sidebar.collapsed .sidebar-new-wrap {
+  padding: 4px 0 6px;
+  display: flex; justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-new-btn {
+  width: 32px; height: 32px;
+  padding: 0; justify-content: center;
+  border: none;
+}
+
+.sidebar-new-icon {
+  width: 15px; height: 15px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-new-icon svg { width: 15px; height: 15px; }
+
+.sidebar-new-label {
+  font-size: 13.5px; font-weight: 400;
+  color: inherit; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
 /* Nav items */
 .sidebar-nav {
   padding: 2px 8px 4px;

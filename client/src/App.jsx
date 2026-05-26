@@ -3763,6 +3763,17 @@ function App() {
     setRailExpanded(v => !v);
   }
 
+  function handleNewPrompt() {
+    setActiveView(null);
+    setConvoDrawerOpen(false);
+    setRoughPrompt('');
+    setSubmittedPrompt('');
+    setSubmittedFeedback('');
+    setError('');
+    clearCurrentRefinement();
+    setTimeout(() => textareaRef.current?.focus(), 80);
+  }
+
   function handleImport(importedHistory, importedSaved) {
     if (importedHistory.length > 0) {
       const next = [...history, ...importedHistory].slice(0, MAX_HISTORY);
@@ -4504,6 +4515,19 @@ function App() {
             title={railExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             <SidebarIcon />
+          </button>
+        </div>
+
+        {/* New rough prompt — mirrors claude.ai's "New chat" button */}
+        <div className="sidebar-new-wrap">
+          <button
+            className="sidebar-new-btn"
+            onClick={handleNewPrompt}
+            title="New rough prompt"
+            aria-label="New rough prompt"
+          >
+            <span className="sidebar-new-icon"><PlusIcon /></span>
+            {railExpanded && <span className="sidebar-new-label">New rough prompt</span>}
           </button>
         </div>
 
