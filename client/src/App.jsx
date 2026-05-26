@@ -15,6 +15,7 @@ import {
   CloseIcon, ShieldIcon, KeyIcon, CardIcon, ContactIcon, PlayIcon, EyeIcon,
   MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
   ConversationsIcon, FunnelLogo,
+  ChartIcon, ShareIcon, ChainIcon, FolderIcon, LoopIcon, ChevronUpIcon, PlusIcon,
 } from './icons.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -48,6 +49,8 @@ const STORAGE_SAVED = 'prompt-improver-saved';
 const STORAGE_USAGE = 'prompt-improver-usage';
 const STORAGE_CURRENT_CONVO = 'prompt-refinery-current-convo';
 const STORAGE_CONVERSATIONS = 'prompt-refinery-conversations';
+const STORAGE_FOLDERS = 'prompt-refinery-folders';
+const STORAGE_CHAIN = 'prompt-refinery-chain';
 const MAX_HISTORY = 20;
 const MAX_USAGE_RECORDS = 500;
 const MAX_CONVERSATIONS = 50;
@@ -77,6 +80,8 @@ const DEFAULT_SETTINGS = {
   piiScannerEnabled: true,
   testModel: DEFAULT_MODEL,
   voiceEnabled: true,
+  customDimensions: [],    // [{id, label, description}] — extra scoring dimensions
+  removedDimensions: [],   // ids of built-in dimensions to hide
 };
 
 function formatTime(timestamp) {
@@ -95,9 +100,10 @@ function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function averageScore(scoreSet) {
+function averageScore(scoreSet, dimensionIds) {
   if (!scoreSet) return null;
-  const values = SCORE_DIMENSIONS.map((d) => scoreSet[d.id]?.score).filter((s) => typeof s === 'number');
+  const ids = dimensionIds || SCORE_DIMENSIONS.map(d => d.id);
+  const values = ids.map((id) => scoreSet[id]?.score).filter((s) => typeof s === 'number');
   if (values.length === 0) return null;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
@@ -148,6 +154,23 @@ function sanitizeFilename(name) {
   return cleaned || 'prompt-refinery-export';
 }
 
+// Extract {{variable}} placeholders from a prompt string.
+// Returns an array of unique variable names in the order they appear.
+function extractVariables(text) {
+  const matches = [...text.matchAll(/\{\{([^}]+)\}\}/g)];
+  const seen = new Set();
+  return matches.map(m => m[1].trim()).filter(name => {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+}
+
+// Fill in {{variable}} placeholders with a map of {name: value}.
+function fillVariables(text, values) {
+  return text.replace(/\{\{([^}]+)\}\}/g, (_, name) => values[name.trim()] ?? `{{${name}}}`);
+}
+
 // Left rail: Conversations slotted in just after History since it's another
 // "things you've done" view. Order chosen to keep similar concepts together.
 const LEFT_RAIL_ITEMS = [
@@ -155,6 +178,8 @@ const LEFT_RAIL_ITEMS = [
   { id: 'conversations', label: 'Conversations',          icon: ConversationsIcon },
   { id: 'saved',         label: 'Saved prompts',          icon: StarIcon },
   { id: 'templates',     label: 'Templates',              icon: TemplatesIcon },
+  { id: 'analytics',    label: 'Analytics',              icon: ChartIcon },
+  { id: 'chain',         label: 'Prompt Chain',           icon: ChainIcon },
   { id: 'usage',         label: 'Usage & cost',           icon: UsageIcon },
   { id: 'help',          label: 'Help & Documentation',   icon: HelpIcon },
   { id: 'settings',      label: 'Settings',               icon: SettingsIcon },
@@ -996,7 +1021,7 @@ function DrawerLogo() {
   );
 }
 
-function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
+function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport }) {
   return (
     <>
       <div className="drawer-head">
@@ -1016,7 +1041,7 @@ function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
         ) : (
           <ul className="history-list">
             {history.map((entry) => (
-              <li key={entry.timestamp}>
+              <li key={entry.timestamp} className="history-li">
                 <button className="history-item" onClick={() => onLoad(entry)}>
                   <div className="history-row">
                     <span className="history-cat">{entry.category}</span>
@@ -1027,6 +1052,13 @@ function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
                   </div>
                   <span className="history-text">{entry.rough}</span>
                 </button>
+                <button
+                  className="history-rerefine-btn"
+                  onClick={(e) => { e.stopPropagation(); onReRefine(entry); }}
+                  title="Load this prompt into the composer to re-refine"
+                >
+                  Re-refine
+                </button>
               </li>
             ))}
           </ul>
@@ -1036,36 +1068,183 @@ function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
   );
 }
 
-function SavedView({ saved, onLoad, onRename, onRemove }) {
+function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder, onAddFolder, onRenameFolder, onDeleteFolder }) {
+  const [newFolderName, setNewFolderName] = useState('');
+  const [addingFolder, setAddingFolder] = useState(false);
+  const addFolderInputRef = useRef(null);
+
+  useEffect(() => {
+    if (addingFolder) addFolderInputRef.current?.focus();
+  }, [addingFolder]);
+
+  function commitNewFolder() {
+    const name = newFolderName.trim();
+    if (name) onAddFolder(name);
+    setNewFolderName('');
+    setAddingFolder(false);
+  }
+
+  // Group prompts by folder
+  const uncategorized = saved.filter(s => !s.folderId);
+  const byFolder = folders.map(f => ({
+    folder: f,
+    items: saved.filter(s => s.folderId === f.id),
+  }));
+
   return (
     <>
       <div className="drawer-head">
         <h3>Saved</h3>
+        <button className="text-btn" onClick={() => setAddingFolder(true)} title="Create a new folder">
+          + Folder
+        </button>
       </div>
       <div className="drawer-body">
-        {saved.length === 0 ? (
+        {addingFolder && (
+          <div className="folder-add-row">
+            <input
+              ref={addFolderInputRef}
+              className="saved-rename-input"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
+                else if (e.key === 'Escape') { setAddingFolder(false); setNewFolderName(''); }
+              }}
+              onBlur={commitNewFolder}
+              placeholder="Folder name"
+              maxLength={60}
+            />
+          </div>
+        )}
+
+        {saved.length === 0 && !addingFolder ? (
           <div className="drawer-empty">Star a refined prompt to save it here for later.</div>
         ) : (
-          <ul className="saved-list">
-            {saved.map((entry) => (
-              <SavedItem
-                key={entry.id}
-                entry={entry}
+          <>
+            {/* Named folders */}
+            {byFolder.map(({ folder, items }) => (
+              <FolderSection
+                key={folder.id}
+                folder={folder}
+                items={items}
+                allFolders={folders}
                 onLoad={onLoad}
                 onRename={onRename}
                 onRemove={onRemove}
+                onMoveToFolder={onMoveToFolder}
+                onRenameFolder={onRenameFolder}
+                onDeleteFolder={onDeleteFolder}
               />
             ))}
-          </ul>
+
+            {/* Uncategorized */}
+            {uncategorized.length > 0 && (
+              <div className="folder-section">
+                {folders.length > 0 && (
+                  <div className="folder-header">
+                    <span className="folder-icon"><FolderIcon /></span>
+                    <span className="folder-name">Uncategorized</span>
+                    <span className="folder-count">{uncategorized.length}</span>
+                  </div>
+                )}
+                <ul className="saved-list">
+                  {uncategorized.map(entry => (
+                    <SavedItem
+                      key={entry.id}
+                      entry={entry}
+                      folders={folders}
+                      onLoad={onLoad}
+                      onRename={onRename}
+                      onRemove={onRemove}
+                      onMoveToFolder={onMoveToFolder}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         )}
       </div>
     </>
   );
 }
 
-function SavedItem({ entry, onLoad, onRename, onRemove }) {
+function FolderSection({ folder, items, allFolders, onLoad, onRename, onRemove, onMoveToFolder, onRenameFolder, onDeleteFolder }) {
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(folder.name);
+  const nameInputRef = useRef(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.focus();
+  }, [editingName]);
+
+  function commitFolderName() {
+    const name = draftName.trim();
+    if (name) onRenameFolder(folder.id, name);
+    setEditingName(false);
+  }
+
+  return (
+    <div className="folder-section">
+      <div className="folder-header" onClick={() => !editingName && setCollapsed(c => !c)}>
+        <span className="folder-icon"><FolderIcon /></span>
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            className="folder-rename-input"
+            value={draftName}
+            onChange={e => setDraftName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitFolderName(); }
+              else if (e.key === 'Escape') { setDraftName(folder.name); setEditingName(false); }
+            }}
+            onBlur={commitFolderName}
+            onClick={e => e.stopPropagation()}
+            maxLength={60}
+          />
+        ) : (
+          <span className="folder-name">{folder.name}</span>
+        )}
+        <span className="folder-count">{items.length}</span>
+        <button
+          className="folder-action-btn"
+          onClick={e => { e.stopPropagation(); setEditingName(true); setDraftName(folder.name); }}
+          title="Rename folder"
+        ><PencilIcon /></button>
+        <button
+          className="folder-action-btn"
+          onClick={e => { e.stopPropagation(); onDeleteFolder(folder.id); }}
+          title="Delete folder (prompts move to Uncategorized)"
+        ><TrashIcon /></button>
+      </div>
+      {!collapsed && (
+        <ul className="saved-list">
+          {items.length === 0
+            ? <li className="folder-empty-hint">No prompts in this folder.</li>
+            : items.map(entry => (
+                <SavedItem
+                  key={entry.id}
+                  entry={entry}
+                  folders={allFolders}
+                  onLoad={onLoad}
+                  onRename={onRename}
+                  onRemove={onRemove}
+                  onMoveToFolder={onMoveToFolder}
+                />
+              ))
+          }
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SavedItem({ entry, folders, onLoad, onRename, onRemove, onMoveToFolder }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(entry.name || '');
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1116,6 +1295,28 @@ function SavedItem({ entry, onLoad, onRename, onRemove }) {
         </button>
       )}
       <div className="saved-actions">
+        {folders && folders.length > 0 && (
+          <div className="saved-folder-wrap">
+            <button
+              className="saved-action-btn"
+              onClick={e => { e.stopPropagation(); setShowFolderPicker(v => !v); }}
+              title="Move to folder"
+            ><FolderIcon /></button>
+            {showFolderPicker && (
+              <div className="folder-picker-dropdown">
+                <button className="folder-picker-option" onClick={() => { onMoveToFolder(entry.id, null); setShowFolderPicker(false); }}>
+                  Uncategorized
+                </button>
+                {folders.map(f => (
+                  <button key={f.id} className={`folder-picker-option ${entry.folderId === f.id ? 'active' : ''}`}
+                    onClick={() => { onMoveToFolder(entry.id, f.id); setShowFolderPicker(false); }}>
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
           className="saved-action-btn"
           onClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -1330,6 +1531,360 @@ function UsageView({ usage, onClear }) {
       </div>
     </>
   );
+}
+
+/* ── Analytics View ──────────────────────────────────────── */
+
+function AnalyticsView({ history }) {
+  const stats = useMemo(() => {
+    const withScores = history.filter(e => e.scores?.rough && e.scores?.refined);
+    if (withScores.length === 0) return null;
+
+    // Per-dimension average lift (refined - rough)
+    const dimLifts = SCORE_DIMENSIONS.map(d => {
+      const lifts = withScores
+        .map(e => (e.scores.refined[d.id]?.score ?? 0) - (e.scores.rough[d.id]?.score ?? 0))
+        .filter(v => !isNaN(v));
+      const avg = lifts.length ? lifts.reduce((a, b) => a + b, 0) / lifts.length : 0;
+      return { ...d, avgLift: avg };
+    });
+
+    const bestDim = [...dimLifts].sort((a, b) => b.avgLift - a.avgLift)[0];
+
+    // Overall avg refined score per entry (last 10)
+    const last10 = [...withScores].slice(0, 10).reverse();
+    const trendEntries = last10.map(e => ({
+      ts: e.timestamp,
+      score: averageScore(e.scores?.refined) || 0,
+    }));
+    const maxTrend = Math.max(5, ...trendEntries.map(t => t.score));
+
+    // Category breakdown
+    const byCat = {};
+    for (const e of history) {
+      byCat[e.category] = (byCat[e.category] || 0) + 1;
+    }
+    const catEntries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    const maxCat = Math.max(1, ...catEntries.map(c => c[1]));
+
+    // Avg overall score lift
+    const overallLifts = withScores.map(e =>
+      (averageScore(e.scores?.refined) || 0) - (averageScore(e.scores?.rough) || 0)
+    );
+    const avgLift = overallLifts.length ? overallLifts.reduce((a, b) => a + b, 0) / overallLifts.length : 0;
+    const avgRefined = withScores.reduce((a, e) => a + (averageScore(e.scores?.refined) || 0), 0) / withScores.length;
+
+    return { dimLifts, bestDim, trendEntries, maxTrend, catEntries, maxCat, avgLift, avgRefined, total: history.length };
+  }, [history]);
+
+  if (!stats) {
+    return (
+      <>
+        <div className="drawer-head"><h3>Analytics</h3></div>
+        <div className="drawer-body">
+          <div className="drawer-empty">Analytics appear after your first refinement with scores.</div>
+        </div>
+      </>
+    );
+  }
+
+  const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  return (
+    <>
+      <div className="drawer-head"><h3>Analytics</h3></div>
+      <div className="drawer-body">
+
+        {/* Summary cards */}
+        <div className="analytics-cards">
+          <div className="analytics-card">
+            <div className="analytics-card-value">{stats.total}</div>
+            <div className="analytics-card-label">Refinements</div>
+          </div>
+          <div className="analytics-card">
+            <div className="analytics-card-value">{stats.avgRefined.toFixed(1)}</div>
+            <div className="analytics-card-label">Avg refined score</div>
+          </div>
+          <div className="analytics-card highlight">
+            <div className="analytics-card-value">+{stats.avgLift.toFixed(1)}</div>
+            <div className="analytics-card-label">Avg score lift</div>
+          </div>
+        </div>
+
+        {/* Best dimension */}
+        {stats.bestDim && (
+          <div className="analytics-best">
+            ✨ Most improved: <strong>{stats.bestDim.label}</strong> (+{stats.bestDim.avgLift.toFixed(1)} avg)
+          </div>
+        )}
+
+        {/* Dimension lifts */}
+        <div className="analytics-section-title">Score lift by dimension</div>
+        <div className="analytics-bars">
+          {stats.dimLifts.map(d => (
+            <div key={d.id} className="analytics-bar-row">
+              <span className="analytics-bar-label">{d.label}</span>
+              <div className="analytics-bar-track">
+                <div
+                  className={`analytics-bar-fill ${d.avgLift >= 0 ? 'positive' : 'negative'}`}
+                  style={{ width: `${Math.min(100, Math.abs(d.avgLift) / 4 * 100)}%` }}
+                />
+              </div>
+              <span className="analytics-bar-value">{d.avgLift >= 0 ? '+' : ''}{d.avgLift.toFixed(1)}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Score trend */}
+        {stats.trendEntries.length > 1 && (
+          <>
+            <div className="analytics-section-title">Refined score trend (last 10)</div>
+            <div className="usage-chart">
+              {stats.trendEntries.map((t, i) => (
+                <div key={i} className="usage-bar-wrap" title={`${new Date(t.ts).toLocaleDateString()}: ${t.score.toFixed(1)}`}>
+                  <div
+                    className="usage-bar"
+                    style={{ height: `${Math.max(4, (t.score / stats.maxTrend) * 100)}%` }}
+                  />
+                  <div className="usage-bar-label">{WEEKDAYS[new Date(t.ts).getDay()]}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Category breakdown */}
+        <div className="analytics-section-title">By category</div>
+        <div className="analytics-bars">
+          {stats.catEntries.map(([cat, count]) => (
+            <div key={cat} className="analytics-bar-row">
+              <span className="analytics-bar-label">{cat}</span>
+              <div className="analytics-bar-track">
+                <div className="analytics-bar-fill positive" style={{ width: `${(count / stats.maxCat) * 100}%` }} />
+              </div>
+              <span className="analytics-bar-value">{count}</span>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </>
+  );
+}
+
+/* ── Chain View ───────────────────────────────────────────── */
+
+const DEFAULT_CHAIN_STEP = () => ({ id: makeId(), prompt: '', output: '', status: 'idle' });
+
+function ChainView({ chainSteps, onUpdateSteps, onRunChain, chainRunning, testModel }) {
+  function addStep() {
+    onUpdateSteps([...chainSteps, DEFAULT_CHAIN_STEP()]);
+  }
+
+  function removeStep(id) {
+    onUpdateSteps(chainSteps.filter(s => s.id !== id));
+  }
+
+  function moveUp(idx) {
+    if (idx === 0) return;
+    const next = [...chainSteps];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onUpdateSteps(next);
+  }
+
+  function moveDown(idx) {
+    if (idx === chainSteps.length - 1) return;
+    const next = [...chainSteps];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    onUpdateSteps(next);
+  }
+
+  function updateStepPrompt(id, value) {
+    onUpdateSteps(chainSteps.map(s => s.id === id ? { ...s, prompt: value } : s));
+  }
+
+  const canRun = chainSteps.length > 0 && chainSteps.every(s => s.prompt.trim()) && !chainRunning;
+
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Prompt Chain</h3>
+        <button className="text-btn" onClick={addStep} disabled={chainRunning}>+ Step</button>
+      </div>
+      <div className="drawer-body">
+        {chainSteps.length === 0 ? (
+          <div className="drawer-empty">
+            Build a pipeline of prompts. Each step's output feeds into the next.
+            <br /><br />
+            <button className="text-btn" onClick={addStep}>+ Add first step</button>
+          </div>
+        ) : (
+          <>
+            {chainSteps.map((step, idx) => (
+              <div key={step.id} className={`chain-step ${step.status === 'running' ? 'running' : ''} ${step.status === 'done' ? 'done' : ''}`}>
+                <div className="chain-step-header">
+                  <span className="chain-step-num">Step {idx + 1}</span>
+                  <div className="chain-step-controls">
+                    <button className="chain-ctrl-btn" onClick={() => moveUp(idx)} disabled={idx === 0 || chainRunning} title="Move up">
+                      <ChevronUpIcon />
+                    </button>
+                    <button className="chain-ctrl-btn" onClick={() => moveDown(idx)} disabled={idx === chainSteps.length - 1 || chainRunning} title="Move down">
+                      <ChevronUpIcon style={{ transform: 'rotate(180deg)' }} />
+                    </button>
+                    <button className="chain-ctrl-btn danger" onClick={() => removeStep(step.id)} disabled={chainRunning} title="Remove step">
+                      <TrashIcon />
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  className="chain-step-textarea"
+                  value={step.prompt}
+                  onChange={e => updateStepPrompt(step.id, e.target.value)}
+                  placeholder={idx === 0 ? 'Enter prompt for step 1…' : 'Use {{previous_output}} to reference the previous step\'s result…'}
+                  rows={3}
+                  disabled={chainRunning}
+                />
+                {step.status === 'running' && (
+                  <div className="chain-step-output running-hint">Running…</div>
+                )}
+                {step.output && (
+                  <div className="chain-step-output">
+                    <div className="chain-output-label">Output</div>
+                    <div className="chain-output-text">{step.output}</div>
+                    <button className="text-btn" onClick={() => navigator.clipboard.writeText(step.output)} style={{ marginTop: 4 }}>Copy</button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="chain-footer">
+              <div className="chain-model-hint">Model: {testModel}</div>
+              <button
+                className="send-btn chain-run-btn"
+                onClick={onRunChain}
+                disabled={!canRun}
+              >
+                {chainRunning ? 'Running…' : 'Run chain'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ── Template Variables Modal ─────────────────────────────── */
+
+function TemplateVariablesModal({ variables, values, onChange, onContinue, onCancel }) {
+  const firstInputRef = useRef(null);
+  useEffect(() => { firstInputRef.current?.focus(); }, []);
+
+  const allFilled = variables.every(v => (values[v] || '').trim());
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && allFilled) { e.preventDefault(); onContinue(); }
+    if (e.key === 'Escape') onCancel();
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <div className="modal-head">
+          <h2>Fill in variables</h2>
+          <button className="modal-close" onClick={onCancel}><CloseIcon /></button>
+        </div>
+        <div className="modal-body" onKeyDown={handleKeyDown}>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            Your prompt has <strong>{variables.length}</strong> variable{variables.length !== 1 ? 's' : ''}. Fill them in below, then continue.
+          </p>
+          {variables.map((v, i) => (
+            <div key={v} className="template-var-row">
+              <label className="template-var-label">
+                <code>{`{{${v}}}`}</code>
+              </label>
+              <input
+                ref={i === 0 ? firstInputRef : null}
+                className="template-var-input"
+                value={values[v] || ''}
+                onChange={e => onChange(v, e.target.value)}
+                placeholder={`Value for ${v}`}
+              />
+            </div>
+          ))}
+          <div className="modal-footer-actions">
+            <button className="text-btn" onClick={onCancel}>Cancel</button>
+            <button className="send-btn" onClick={onContinue} disabled={!allFilled}>
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Share Modal ──────────────────────────────────────────── */
+
+function ShareModal({ shareUrl, rough, improved, changes, onClose }) {
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [mdCopied, setMdCopied] = useState(false);
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(shareUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
+  async function copyMarkdown() {
+    const md = buildShareMarkdown(rough, improved, changes);
+    await navigator.clipboard.writeText(md);
+    setMdCopied(true);
+    setTimeout(() => setMdCopied(false), 2000);
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-head">
+          <h2>Share prompt</h2>
+          <button className="modal-close" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-section">
+            <h3>Local link</h3>
+            <p className="modal-section-hint">This link works on your machine while the server is running.</p>
+            <div className="share-link-row">
+              <input className="share-link-input" value={shareUrl} readOnly onClick={e => e.target.select()} />
+              <button className="send-btn" style={{ flexShrink: 0 }} onClick={copyLink}>
+                {linkCopied ? 'Copied!' : 'Copy link'}
+              </button>
+            </div>
+          </div>
+          <div className="modal-section">
+            <h3>Copy as Markdown</h3>
+            <p className="modal-section-hint">Paste into Slack, Notion, email, or anywhere that renders Markdown.</p>
+            <button className="text-btn" onClick={copyMarkdown}>
+              {mdCopied ? '✓ Copied to clipboard' : 'Copy as Markdown'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildShareMarkdown(rough, improved, changes) {
+  let md = `# Refined Prompt\n\n`;
+  md += `**Original:**\n\n${rough}\n\n`;
+  md += `**Refined:**\n\n${improved}\n\n`;
+  if (changes && changes.length > 0) {
+    md += `## What Changed\n\n`;
+    for (const c of changes) {
+      md += `**${c.title}** — ${c.explanation}\n\n`;
+    }
+  }
+  return md;
 }
 
 function HelpView() {
@@ -1570,8 +2125,109 @@ function SettingsView({ settings, onChange, onReset, speechSupported }) {
             ))}
           </div>
         </div>
+
+        <div className="settings-divider" />
+
+        <ScoringDimensionsSettings settings={settings} onChange={onChange} />
+
       </div>
     </>
+  );
+}
+
+function ScoringDimensionsSettings({ settings, onChange }) {
+  const [newLabel, setNewLabel] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const removedSet = new Set(settings.removedDimensions || []);
+  const customDims = settings.customDimensions || [];
+
+  function removeBuiltIn(id) {
+    onChange({ removedDimensions: [...removedSet, id] });
+  }
+
+  function restoreBuiltIn(id) {
+    onChange({ removedDimensions: [...removedSet].filter(x => x !== id) });
+  }
+
+  function addCustom() {
+    const label = newLabel.trim();
+    const description = newDesc.trim();
+    if (!label) return;
+    const id = 'custom_' + label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const newDim = { id, label, description };
+    onChange({ customDimensions: [...customDims, newDim] });
+    setNewLabel('');
+    setNewDesc('');
+    setAdding(false);
+  }
+
+  function removeCustom(id) {
+    onChange({ customDimensions: customDims.filter(d => d.id !== id) });
+  }
+
+  function resetToDefaults() {
+    onChange({ customDimensions: [], removedDimensions: [] });
+  }
+
+  return (
+    <div className="settings-group">
+      <div className="settings-group-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span>Scoring dimensions</span>
+        {(removedSet.size > 0 || customDims.length > 0) && (
+          <button className="text-btn" onClick={resetToDefaults} style={{ fontSize: 11 }}>Reset to defaults</button>
+        )}
+      </div>
+      <div className="settings-group-hint">
+        Customize which dimensions Claude scores. Remove built-in ones or add your own (e.g. "Creativity", "Tone").
+      </div>
+
+      <div className="dim-chips">
+        {SCORE_DIMENSIONS.map(d => (
+          <div key={d.id} className={`dim-chip ${removedSet.has(d.id) ? 'removed' : ''}`} title={d.description}>
+            {d.label}
+            {removedSet.has(d.id)
+              ? <button className="dim-chip-btn" onClick={() => restoreBuiltIn(d.id)} title="Restore">+</button>
+              : <button className="dim-chip-btn" onClick={() => removeBuiltIn(d.id)} title="Remove">×</button>
+            }
+          </div>
+        ))}
+        {customDims.map(d => (
+          <div key={d.id} className="dim-chip custom" title={d.description}>
+            {d.label}
+            <button className="dim-chip-btn" onClick={() => removeCustom(d.id)} title="Remove">×</button>
+          </div>
+        ))}
+      </div>
+
+      {adding ? (
+        <div className="dim-add-form">
+          <input
+            className="template-var-input"
+            value={newLabel}
+            onChange={e => setNewLabel(e.target.value)}
+            placeholder="Dimension name (e.g. Creativity)"
+            maxLength={40}
+            autoFocus
+          />
+          <input
+            className="template-var-input"
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            placeholder="Short description (optional)"
+            maxLength={120}
+            style={{ marginTop: 6 }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className="text-btn" onClick={() => { setAdding(false); setNewLabel(''); setNewDesc(''); }}>Cancel</button>
+            <button className="send-btn" style={{ padding: '5px 14px', fontSize: 13 }} onClick={addCustom} disabled={!newLabel.trim()}>Add</button>
+          </div>
+        </div>
+      ) : (
+        <button className="text-btn" style={{ marginTop: 8 }} onClick={() => setAdding(true)}>+ Add dimension</button>
+      )}
+    </div>
   );
 }
 
@@ -2557,6 +3213,29 @@ function App() {
   const [running, setRunning] = useState(false);
   const [convoDrawerOpen, setConvoDrawerOpen] = useState(false);
 
+  // Folders for saved prompts
+  const [folders, setFolders] = useState([]);
+
+  // Template variables modal
+  const [templateVarsOpen, setTemplateVarsOpen] = useState(false);
+  const [templateVarNames, setTemplateVarNames] = useState([]);
+  const [templateVarValues, setTemplateVarValues] = useState({});
+  const [templateVarsPendingFeedback, setTemplateVarsPendingFeedback] = useState(null);
+
+  // Share modal
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+
+  // Prompt chain
+  const [chainSteps, setChainSteps] = useState([]);
+  const [chainRunning, setChainRunning] = useState(false);
+  const chainAbortRef = useRef(null);
+
+  // Multi-pass refinement
+  const [multiPassEnabled, setMultiPassEnabled] = useState(false);
+  const [multiPassCount, setMultiPassCount] = useState(3);
+  const [multiPassCurrent, setMultiPassCurrent] = useState(0);
+
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
@@ -2600,6 +3279,16 @@ function App() {
     if (savedConvos) {
       try { setConversations(JSON.parse(savedConvos)); }
       catch { setConversations([]); }
+    }
+    const savedFolders = localStorage.getItem(STORAGE_FOLDERS);
+    if (savedFolders) {
+      try { setFolders(JSON.parse(savedFolders)); }
+      catch { setFolders([]); }
+    }
+    const savedChain = localStorage.getItem(STORAGE_CHAIN);
+    if (savedChain) {
+      try { setChainSteps(JSON.parse(savedChain)); }
+      catch { setChainSteps([]); }
     }
   }, []);
 
@@ -2855,6 +3544,166 @@ function App() {
     if (currentSavedId === id) setCurrentSavedId(null);
   }
 
+  /* ── Folder management ───────────────────────────────── */
+
+  function persistFolders(next) {
+    setFolders(next);
+    localStorage.setItem(STORAGE_FOLDERS, JSON.stringify(next));
+  }
+
+  function addFolder(name) {
+    const f = { id: makeId(), name, createdAt: Date.now() };
+    persistFolders([...folders, f]);
+  }
+
+  function renameFolder(id, name) {
+    persistFolders(folders.map(f => f.id === id ? { ...f, name } : f));
+  }
+
+  function deleteFolder(id) {
+    if (!confirm('Delete this folder? Prompts inside will move to Uncategorized.')) return;
+    persistFolders(folders.filter(f => f.id !== id));
+    persistSaved(saved.map(s => s.folderId === id ? { ...s, folderId: null } : s));
+  }
+
+  function moveSavedToFolder(entryId, folderId) {
+    persistSaved(saved.map(s => s.id === entryId ? { ...s, folderId: folderId || null } : s));
+  }
+
+  /* ── Re-refine from history ──────────────────────────── */
+
+  function reRefineFromHistory(entry) {
+    if (streaming || comparing || abTesting || running) return;
+    setRoughPrompt(entry.rough);
+    setCategory(entry.category);
+    clearCurrentRefinement();
+    setSubmittedPrompt('');
+    setError('');
+    setActiveView(null);
+    setTimeout(() => textareaRef.current?.focus(), 250);
+  }
+
+  /* ── Template variables ──────────────────────────────── */
+
+  function handleTemplateVarsContinue() {
+    const filledPrompt = fillVariables(roughPrompt, templateVarValues);
+    setRoughPrompt(filledPrompt);
+    setTemplateVarsOpen(false);
+    setTemplateVarNames([]);
+    setTemplateVarValues({});
+    const feedback = templateVarsPendingFeedback;
+    setTemplateVarsPendingFeedback(null);
+    // Proceed with the filled prompt
+    setTimeout(() => runRefinement({ feedback, overridePrompt: filledPrompt }), 0);
+  }
+
+  function handleTemplateVarsCancel() {
+    setTemplateVarsOpen(false);
+    setTemplateVarNames([]);
+    setTemplateVarValues({});
+    setTemplateVarsPendingFeedback(null);
+  }
+
+  function updateTemplateVarValue(name, value) {
+    setTemplateVarValues(prev => ({ ...prev, [name]: value }));
+  }
+
+  /* ── Share prompt ────────────────────────────────────── */
+
+  async function handleShare() {
+    if (!improvedPrompt || !refinedComplete) return;
+    try {
+      const res = await fetch(`${API_URL}/api/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rough: submittedPrompt,
+          improved: improvedPrompt,
+          changes,
+          scores,
+          category,
+          model: primaryModel,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setShareUrl(data.url);
+        setShareModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+    }
+  }
+
+  /* ── Prompt chain ────────────────────────────────────── */
+
+  function updateChainSteps(steps) {
+    setChainSteps(steps);
+    localStorage.setItem(STORAGE_CHAIN, JSON.stringify(steps));
+  }
+
+  async function runChain() {
+    if (chainRunning || !chainSteps.every(s => s.prompt.trim())) return;
+    setChainRunning(true);
+
+    const controller = new AbortController();
+    chainAbortRef.current = controller;
+
+    // Reset all step outputs
+    const working = chainSteps.map(s => ({ ...s, output: '', status: 'idle' }));
+    updateChainSteps(working);
+
+    let previousOutput = '';
+
+    for (let i = 0; i < working.length; i++) {
+      if (controller.signal.aborted) break;
+
+      // Mark as running
+      working[i] = { ...working[i], status: 'running' };
+      updateChainSteps([...working]);
+
+      const prompt = previousOutput
+        ? working[i].prompt.replace(/\{\{previous_output\}\}/g, previousOutput)
+        : working[i].prompt;
+
+      let stepOutput = '';
+      try {
+        const response = await fetch(`${API_URL}/api/run-prompt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: prompt }],
+            model: settings.testModel,
+          }),
+          signal: controller.signal,
+        });
+
+        await consumeSSE(response, {
+          'run-chunk': (p) => {
+            stepOutput += p.text;
+            working[i] = { ...working[i], output: stepOutput };
+            updateChainSteps([...working]);
+          },
+          'run-done': () => {},
+          'run-error': (p) => { throw new Error(p.error || 'Run failed'); },
+        });
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          working[i] = { ...working[i], status: 'error', output: `Error: ${err.message}` };
+          updateChainSteps([...working]);
+          break;
+        }
+      }
+
+      previousOutput = stepOutput;
+      working[i] = { ...working[i], status: 'done' };
+      updateChainSteps([...working]);
+    }
+
+    setChainRunning(false);
+    chainAbortRef.current = null;
+  }
+
   // Left rail icon click. The "conversations" item opens the right-side
   // run drawer; all others toggle the left-side drawer view.
   function toggleView(id) {
@@ -2957,8 +3806,8 @@ function App() {
     else startRecording();
   }
 
-  async function executeRefinement({ feedback = null } = {}) {
-    const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
+  async function executeRefinement({ feedback = null, overridePrompt = null, passNum = 1, passTotal = 1 } = {}) {
+    const sourcePrompt = overridePrompt || (feedback ? submittedPrompt : roughPrompt);
     if (!sourcePrompt.trim() || streaming || comparing) return;
 
     if (isRecording) stopRecording();
@@ -2974,15 +3823,16 @@ function App() {
     setPrimaryLatencyMs(null);
     setAbTest(null);
     setAbTestOpen(false);
+    if (passTotal > 1) setMultiPassCurrent(passNum);
 
     const previousRefined = feedback ? improvedPrompt : null;
 
     if (feedback) {
       setSubmittedFeedback(feedback);
     } else {
-      setSubmittedPrompt(roughPrompt);
+      setSubmittedPrompt(overridePrompt || roughPrompt);
       setSubmittedFeedback('');
-      setRoughPrompt('');
+      if (!overridePrompt) setRoughPrompt('');
     }
 
     setImprovedPrompt('');
@@ -2992,6 +3842,13 @@ function App() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Build active dimensions list for the backend
+    const removedSet = new Set(settings.removedDimensions || []);
+    const activeDimensions = [
+      ...SCORE_DIMENSIONS.filter(d => !removedSet.has(d.id)),
+      ...(settings.customDimensions || []),
+    ];
 
     let accumulatedRefined = '';
     let accumulatedChanges = [];
@@ -3008,6 +3865,7 @@ function App() {
           model: settings.model,
           previousRefined: previousRefined || undefined,
           feedback: feedback || undefined,
+          dimensions: activeDimensions.length !== SCORE_DIMENSIONS.length ? activeDimensions : undefined,
         },
         signal: controller.signal,
         onChunk: (text) => {
@@ -3067,12 +3925,37 @@ function App() {
       setStreaming(false);
       setRefinedComplete(true);
       abortRef.current = null;
+
+      // Multi-pass: if more passes remain, run the next pass with the refined output
+      if (passTotal > 1 && passNum < passTotal && accumulatedRefined && !controller.signal.aborted) {
+        setTimeout(() => {
+          executeRefinement({
+            overridePrompt: accumulatedRefined,
+            passNum: passNum + 1,
+            passTotal,
+          });
+        }, 300);
+      } else if (passTotal > 1) {
+        setMultiPassCurrent(0);
+      }
     }
   }
 
-  async function runRefinement({ feedback = null } = {}) {
-    const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
+  async function runRefinement({ feedback = null, overridePrompt = null } = {}) {
+    const sourcePrompt = overridePrompt || (feedback ? submittedPrompt : roughPrompt);
     if (!sourcePrompt.trim() || streaming || comparing) return;
+
+    // Check for template variables (only on initial submit, not follow-ups)
+    if (!feedback && !overridePrompt) {
+      const vars = extractVariables(sourcePrompt);
+      if (vars.length > 0) {
+        setTemplateVarNames(vars);
+        setTemplateVarValues({});
+        setTemplateVarsPendingFeedback(feedback);
+        setTemplateVarsOpen(true);
+        return;
+      }
+    }
 
     if (settings.piiScannerEnabled) {
       const findings = scanForPII(sourcePrompt);
@@ -3083,7 +3966,7 @@ function App() {
       }
     }
 
-    executeRefinement({ feedback });
+    executeRefinement({ feedback, overridePrompt });
   }
 
   function handlePIIContinue() {
@@ -3471,13 +4354,21 @@ function App() {
 
   /* ── Other handlers ──────────────────────────────────────── */
 
-  function handleImprove() { runRefinement(); }
+  function handleImprove() {
+    if (multiPassEnabled && multiPassCount > 1) {
+      executeRefinement({ passNum: 1, passTotal: multiPassCount });
+    } else {
+      runRefinement();
+    }
+  }
   function handleFollowUp(feedback) { runRefinement({ feedback }); }
 
   function handleStop() {
     if (abortRef.current) abortRef.current.abort();
     if (compareAbortRef.current) compareAbortRef.current.abort();
     if (testAbortRef.current) testAbortRef.current.abort();
+    if (chainAbortRef.current) chainAbortRef.current.abort();
+    setMultiPassCurrent(0);
   }
 
   async function handleCopy() {
@@ -3563,6 +4454,7 @@ function App() {
             <HistoryView
               history={history}
               onLoad={loadFromHistory}
+              onReRefine={reRefineFromHistory}
               onClear={clearHistory}
               onOpenImportExport={() => setImportExportOpen(true)}
             />
@@ -3570,12 +4462,27 @@ function App() {
           {activeView === 'saved' && (
             <SavedView
               saved={saved}
+              folders={folders}
               onLoad={loadFromSaved}
               onRename={renameSaved}
               onRemove={removeSaved}
+              onMoveToFolder={moveSavedToFolder}
+              onAddFolder={addFolder}
+              onRenameFolder={renameFolder}
+              onDeleteFolder={deleteFolder}
             />
           )}
           {activeView === 'templates' && <TemplatesView onSelect={loadFromTemplate} />}
+          {activeView === 'analytics' && <AnalyticsView history={history} />}
+          {activeView === 'chain' && (
+            <ChainView
+              chainSteps={chainSteps}
+              onUpdateSteps={updateChainSteps}
+              onRunChain={runChain}
+              chainRunning={chainRunning}
+              testModel={settings.testModel}
+            />
+          )}
           {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
           {activeView === 'help' && <HelpView />}
           {activeView === 'settings' && (
@@ -3668,6 +4575,15 @@ function App() {
                       title="Export to PDF"
                     >
                       <PDFIcon />
+                    </button>
+                    <button
+                      className="icon-action"
+                      onClick={handleShare}
+                      disabled={!refinedComplete || busy}
+                      aria-label="Share prompt"
+                      title="Share this refined prompt"
+                    >
+                      <ShareIcon />
                     </button>
                     <button className="copy-btn" onClick={handleCopy} disabled={busy}>
                       {copied ? 'Copied' : 'Copy'}
@@ -3806,6 +4722,34 @@ function App() {
 
           {voiceError && <div className="voice-error">{voiceError}</div>}
 
+          {/* Multi-pass refinement toggle */}
+          <div className="multipass-bar">
+            <button
+              type="button"
+              className={`multipass-toggle ${multiPassEnabled ? 'on' : ''}`}
+              onClick={() => setMultiPassEnabled(v => !v)}
+              title="Auto-refine multiple passes for a more polished result"
+            >
+              <LoopIcon />
+              Multi-pass
+            </button>
+            {multiPassEnabled && (
+              <select
+                className="multipass-select"
+                value={multiPassCount}
+                onChange={e => setMultiPassCount(Number(e.target.value))}
+                disabled={busy}
+              >
+                {[2, 3, 4, 5].map(n => (
+                  <option key={n} value={n}>{n} passes</option>
+                ))}
+              </select>
+            )}
+            {multiPassEnabled && multiPassCurrent > 0 && (
+              <span className="multipass-progress">Pass {multiPassCurrent} of {multiPassCount}…</span>
+            )}
+          </div>
+
           {showLintHints && (
             <LintHintsPanel
               hints={lintHints}
@@ -3830,6 +4774,26 @@ function App() {
           findings={piiFindings}
           onContinue={handlePIIContinue}
           onCancel={handlePIICancel}
+        />
+      )}
+
+      {templateVarsOpen && (
+        <TemplateVariablesModal
+          variables={templateVarNames}
+          values={templateVarValues}
+          onChange={updateTemplateVarValue}
+          onContinue={handleTemplateVarsContinue}
+          onCancel={handleTemplateVarsCancel}
+        />
+      )}
+
+      {shareModalOpen && (
+        <ShareModal
+          shareUrl={shareUrl}
+          rough={submittedPrompt}
+          improved={improvedPrompt}
+          changes={changes}
+          onClose={() => setShareModalOpen(false)}
         />
       )}
 

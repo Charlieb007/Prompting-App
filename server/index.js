@@ -2,6 +2,22 @@ import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import 'dotenv/config';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SHARES_FILE = join(__dirname, 'shares.json');
+
+function loadShares() {
+  if (!existsSync(SHARES_FILE)) return {};
+  try { return JSON.parse(readFileSync(SHARES_FILE, 'utf8')); } catch { return {}; }
+}
+
+function saveShares(shares) {
+  writeFileSync(SHARES_FILE, JSON.stringify(shares, null, 2), 'utf8');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,7 +31,20 @@ const client = new Anthropic({
 
 /* ── Refiner system prompt ─────────────────────────────── */
 
-const REFINER_SYSTEM_PROMPT = `You are a prompt engineering specialist. Your job is to take a rough, vague, or incomplete prompt from a user and refine it into a well-structured prompt that will get better results from an AI model.
+const DEFAULT_DIMENSIONS = [
+  { id: 'specificity', label: 'Specificity', description: 'Concreteness and detail of the request.' },
+  { id: 'audience',    label: 'Audience',    description: 'Who the response is for and what they need.' },
+  { id: 'format',      label: 'Format',      description: 'Whether the desired output format is specified.' },
+  { id: 'constraints', label: 'Constraints', description: 'Limits, exclusions, requirements stated.' },
+  { id: 'examples',   label: 'Examples',    description: 'Examples provided or step-by-step reasoning requested.' },
+];
+
+function buildSystemPrompt(dimensions) {
+  const dims = dimensions && dimensions.length > 0 ? dimensions : DEFAULT_DIMENSIONS;
+  const dimList = dims.map(d => `  - ${d.id}: ${d.description || d.label}`).join('\n');
+  const dimKeys = dims.map(d => d.id).join(', ');
+
+  return `You are a prompt engineering specialist. Your job is to take a rough, vague, or incomplete prompt from a user and refine it into a well-structured prompt that will get better results from an AI model.
 
 When refining a prompt, you should:
 - Add specificity (what exactly is being asked?)
@@ -31,12 +60,16 @@ You must respond in this exact format, using these exact delimiters:
 <<<CHANGES_JSON>>>
 [a JSON array of changes, each with "title" and "explanation" fields]
 <<<SCORES_JSON>>>
-[a JSON object with "rough" and "refined" keys, each containing scores for specificity, audience, format, constraints, examples, each as {"score": 1-5, "rationale": "..."}]
+[a JSON object with "rough" and "refined" keys, each containing scores for these dimensions: ${dimKeys}
+Each score is an object: {"score": 1-5, "rationale": "..."}
+Dimensions to score:
+${dimList}]
 <<<END>>>
 
 For follow-up refinements, the user gives you a previously-refined prompt and feedback. Apply the feedback to produce a new refined version. Score the new version (not the original rough prompt) against the previous refined version. The "rough" scores in this case represent the previous refined version's scores.
 
 Be honest in scoring — a great rough prompt should score high. A bad refinement should score low. Don't pad numbers to seem helpful.`;
+}
 
 const REFINER_USER_TEMPLATE = (prompt, category) => `Category: ${category}
 
@@ -92,7 +125,7 @@ function sendEvent(res, eventName, data) {
 /* ── /api/improve ─────────────────────────────────────── */
 
 app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback } = req.body;
+  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required and must be a string.' });
@@ -102,6 +135,8 @@ app.post('/api/improve', async (req, res) => {
   }
 
   setupSSE(res);
+
+  const systemPrompt = buildSystemPrompt(dimensions);
 
   const userMessage = (previousRefined && feedback)
     ? FOLLOWUP_USER_TEMPLATE(prompt, previousRefined, feedback, category)
@@ -118,7 +153,7 @@ app.post('/api/improve', async (req, res) => {
     const stream = await client.messages.stream({
       model,
       max_tokens: 4000,
-      system: REFINER_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
 
@@ -412,6 +447,66 @@ app.post('/api/run-prompt', async (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
+});
+
+/* ── Share routes ─────────────────────────────────────── */
+
+app.post('/api/share', (req, res) => {
+  const { rough, improved, changes, scores, category, model } = req.body;
+  if (!rough || !improved) {
+    return res.status(400).json({ error: 'rough and improved are required.' });
+  }
+  const id = randomBytes(4).toString('hex');
+  const shares = loadShares();
+  shares[id] = { id, rough, improved, changes, scores, category, model, createdAt: Date.now() };
+  saveShares(shares);
+  const url = `http://localhost:${PORT}/share/${id}`;
+  res.json({ id, url });
+});
+
+app.get('/api/share/:id', (req, res) => {
+  const shares = loadShares();
+  const entry = shares[req.params.id];
+  if (!entry) return res.status(404).json({ error: 'Share not found.' });
+  res.json(entry);
+});
+
+app.get('/share/:id', (req, res) => {
+  const shares = loadShares();
+  const entry = shares[req.params.id];
+  if (!entry) return res.status(404).send('<h1>Not found</h1><p>This shared prompt does not exist.</p>');
+
+  const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const changesHtml = entry.changes?.map(c =>
+    `<li><strong>${esc(c.title)}</strong> — ${esc(c.explanation)}</li>`
+  ).join('') || '';
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared Prompt — Prompt Refinery</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1a1a2e; background: #f8f8fc; }
+    h1 { font-size: 1.4rem; color: #6b48c0; }
+    h2 { font-size: 1rem; color: #555; margin-top: 28px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .box { background: #fff; border: 1px solid #e2e2ef; border-radius: 10px; padding: 18px 20px; white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; }
+    .meta { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
+    ul { line-height: 1.8; }
+    a { color: #6b48c0; }
+  </style>
+</head>
+<body>
+  <h1>Shared Prompt</h1>
+  <p class="meta">Category: ${esc(entry.category)} · Model: ${esc(entry.model)} · Shared via <a href="http://localhost:${PORT}">Prompt Refinery</a></p>
+  <h2>Original</h2>
+  <div class="box">${esc(entry.rough)}</div>
+  <h2>Refined</h2>
+  <div class="box">${esc(entry.improved)}</div>
+  ${changesHtml ? `<h2>What Changed</h2><ul>${changesHtml}</ul>` : ''}
+</body>
+</html>`);
 });
 
 app.listen(PORT, () => {
