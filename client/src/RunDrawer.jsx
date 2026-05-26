@@ -468,13 +468,11 @@ export function RunDrawer({
   }
 
   return (
-    <>
-      {!fullscreen && <div className="run-drawer-backdrop" onClick={onClose} />}
-      <aside
-        className={`run-drawer${fullscreen ? ' run-drawer--fullscreen' : ''}`}
-        role="dialog"
-        aria-label="Run prompt panel"
-      >
+    <aside
+      className={`run-drawer${fullscreen ? ' run-drawer--fullscreen' : ''}`}
+      role="dialog"
+      aria-label="Run prompt panel"
+    >
         <div className="run-drawer-head">
           {isListMode ? (
             <button
@@ -622,7 +620,6 @@ export function RunDrawer({
             </div>
           </>
         )}
-      </aside>
-    </>
+    </aside>
   );
 }
