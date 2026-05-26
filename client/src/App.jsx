@@ -3274,6 +3274,9 @@ function App() {
   const recognitionRef = useRef(null);
   const recognitionBaseRef = useRef('');
   const scoresChartRef = useRef(null);
+  // Stores the desired pass count across the template-var / PII modal interruptions
+  // so multi-pass is preserved even when those checks show a modal before executing.
+  const pendingPassTotalRef = useRef(1);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
@@ -4006,14 +4009,20 @@ function App() {
       }
     }
 
-    executeRefinement({ feedback, overridePrompt });
+    // For follow-ups, multi-pass doesn't apply (passTotal = 1).
+    // For initial submits (including post-template-var continuation),
+    // carry through the pass count the user chose when they hit Refine.
+    const passTotal = feedback ? 1 : pendingPassTotalRef.current;
+    executeRefinement({ feedback, overridePrompt, passNum: 1, passTotal });
   }
 
   function handlePIIContinue() {
     const feedback = piiPendingFeedback;
     setPiiFindings(null);
     setPiiPendingFeedback(null);
-    executeRefinement({ feedback });
+    // Preserve the pass count that was set when the user clicked Refine.
+    const passTotal = feedback ? 1 : pendingPassTotalRef.current;
+    executeRefinement({ feedback, passNum: 1, passTotal });
   }
 
   function handlePIICancel() {
@@ -4395,11 +4404,10 @@ function App() {
   /* ── Other handlers ──────────────────────────────────────── */
 
   function handleImprove() {
-    if (multiPassEnabled && multiPassCount > 1) {
-      executeRefinement({ passNum: 1, passTotal: multiPassCount });
-    } else {
-      runRefinement();
-    }
+    // Always route through runRefinement so template-variable and PII checks
+    // run first, even when multi-pass is on.
+    pendingPassTotalRef.current = multiPassEnabled && multiPassCount > 1 ? multiPassCount : 1;
+    runRefinement();
   }
   function handleFollowUp(feedback) { runRefinement({ feedback }); }
 

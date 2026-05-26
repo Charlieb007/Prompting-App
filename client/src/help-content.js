@@ -123,7 +123,7 @@ export const HELP_CONTENT = [
     body: [
       { type: 'text', text: 'Saved prompts can be organised into named folders inside the Saved panel. All prompts start in "Uncategorized" and can be dragged into any folder you create.' },
       { type: 'step', n: 1, title: 'Create a folder', text: 'Open the Saved panel and click the "+ New folder" button in the header. Type a name (e.g., "Work emails", "Code snippets", "Client X") and press Enter or click Add.' },
-      { type: 'step', n: 2, title: 'Move prompts into folders', text: 'Drag any saved prompt card and drop it onto a folder header. The card moves into that folder. You can see which folder a prompt is in by its position in the list.' },
+      { type: 'step', n: 2, title: 'Move prompts into folders', text: 'Drag any saved prompt card and drop it onto a folder to move it there. To move a prompt back to Uncategorized, drag it onto the Uncategorized section at the bottom. You can see which folder a prompt belongs to by its position in the list.' },
       { type: 'step', n: 3, title: 'Manage folders', text: 'Each folder header has a pencil icon to rename it and a trash icon to delete it. Deleting a folder moves all its prompts back to Uncategorized — no prompts are lost.' },
       { type: 'note', text: 'Folders are stored in your browser\'s localStorage alongside your saved prompts. They survive page refreshes but not browser data clears — export regularly if your collection is important.' },
     ],
