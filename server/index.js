@@ -1,319 +1,183 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
-
-dotenv.config();
+import 'dotenv/config';
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 3001;
 
-const anthropic = new Anthropic({
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+/* ── Refiner system prompt ─────────────────────────────── */
 
-const ALLOWED_MODELS = new Set([
-  'claude-opus-4-7',
-  'claude-opus-4-6',
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5-20251001',
-]);
+const REFINER_SYSTEM_PROMPT = `You are a prompt engineering specialist. Your job is to take a rough, vague, or incomplete prompt from a user and refine it into a well-structured prompt that will get better results from an AI model.
 
-const UNIVERSAL_REFINEMENT_HEURISTICS = `
-General refinement rules (apply to all categories):
+When refining a prompt, you should:
+- Add specificity (what exactly is being asked?)
+- Clarify the audience (who is the output for?)
+- Specify the output format (length, structure, tone)
+- Add useful constraints (what to include, what to exclude)
+- Sometimes add examples or ask for step-by-step reasoning
 
-1. Use delimiters to separate distinct parts of the refined prompt when it has
-   multiple sections. Use XML-style tags like <context>, <task>, <constraints>,
-   <format>, <examples>. This makes the refined prompt's intent unambiguous
-   when the user takes it to any model.
+You must respond in this exact format, using these exact delimiters:
 
-2. If the task involves factual claims, analysis, or decisions, instruct the
-   eventual model on how to handle uncertainty. Add an explicit line like
-   "If you are not certain, say so explicitly rather than guessing." Do not
-   add this for purely creative or brainstorming tasks where speculation is
-   the point.
+<<<REFINED_PROMPT>>>
+[the improved prompt text]
+<<<CHANGES_JSON>>>
+[a JSON array of changes, each with "title" and "explanation" fields]
+<<<SCORES_JSON>>>
+[a JSON object with "rough" and "refined" keys, each containing scores for specificity, audience, format, constraints, examples, each as {"score": 1-5, "rationale": "..."}]
+<<<END>>>
 
-3. If the refined prompt is long (more than ~150 words), put the single most
-   important instruction or the core question at the very END of the prompt,
-   after all context and constraints. Models attend more strongly to recent
-   tokens; the "ask" lands harder when it's last.
-`;
+For follow-up refinements, the user gives you a previously-refined prompt and feedback. Apply the feedback to produce a new refined version. Score the new version (not the original rough prompt) against the previous refined version. The "rough" scores in this case represent the previous refined version's scores.
 
-const CATEGORY_INSTRUCTIONS = {
-  general:
-    'Rewrite the prompt to be clear, specific, and well-structured. Add concrete details where the original is vague, specify the desired output format, and break complex tasks into steps.',
-  writing:
-    'Rewrite the prompt for a creative or professional writing task. Specify the audience, tone, length, and format. Add guidance on voice, structure, and any constraints.',
-  code:
-    'Rewrite the prompt as a software engineering task. Specify the programming language, expected input and output, edge cases to handle, constraints, and the desired code style. Include an instruction for the eventual model to ask clarifying questions if requirements are ambiguous rather than guessing.',
-  analysis:
-    'Rewrite the prompt for an analysis or research task. Specify the data or source material, the questions to answer, the output structure, and ask for citations or reasoning. Include an explicit instruction to say "I do not know" or "the data does not support a conclusion" rather than fabricating findings.',
-  brainstorm:
-    'Rewrite the prompt as a brainstorming request. Specify the number of ideas wanted, any categorization, and the criteria each idea should be evaluated against.',
-};
+Be honest in scoring — a great rough prompt should score high. A bad refinement should score low. Don't pad numbers to seem helpful.`;
 
-const SCORING_RUBRIC = `Score each prompt against five dimensions on a 1-5 integer scale:
+const REFINER_USER_TEMPLATE = (prompt, category) => `Category: ${category}
 
-1. specificity — How concrete and detailed is the request?
-   1 = vague, abstract, or generic; 5 = highly specific with named entities, quantities, and context.
-
-2. audience — Does the prompt establish who the response is for and what they need?
-   1 = no audience mentioned; 5 = audience explicitly named with their expertise level and context.
-
-3. format — Is the desired output format explicitly specified?
-   1 = no format mentioned; 5 = format, length, structure, and any required sections clearly defined.
-
-4. constraints — Are limits, exclusions, requirements, and edge cases clearly stated?
-   1 = no constraints; 5 = comprehensive constraints (length, tone, what to avoid, edge cases).
-
-5. examples — Does the prompt include examples or ask for step-by-step reasoning?
-   1 = no examples or reasoning guidance; 5 = clear examples provided or chain-of-thought explicitly requested.
-
-For each dimension, return an integer score 1-5 and a single concise sentence rationale.`;
-
-const DELIMITER = '<<<CHANGES_JSON>>>';
-
-function buildSystemPrompt(category, isFollowUp) {
-  const instruction = CATEGORY_INSTRUCTIONS[category] || CATEGORY_INSTRUCTIONS.general;
-  const baseTask = isFollowUp
-    ? `You previously refined a prompt for the user. They have feedback on the refinement and want another iteration. Apply their feedback while keeping the prompt clear, specific, and well-structured. ${instruction}`
-    : `You are an expert at prompt engineering. ${instruction}`;
-
-  return `${baseTask}
-
-${UNIVERSAL_REFINEMENT_HEURISTICS}
-
-Your response has two parts, separated by a special delimiter:
-
-PART 1: The refined prompt itself, written as plain text. No preamble, no markdown headers describing what you did. Just the refined prompt.
-
-PART 2: A line containing only the delimiter "${DELIMITER}" on its own.
-
-PART 3: A JSON object with two fields, "changes" and "scores":
-
-{
-  "changes": [
-    { "title": "Short label (3-6 words)", "explanation": "One concise sentence." }
-  ],
-  "scores": {
-    "rough": {
-      "specificity":  { "score": 1, "rationale": "..." },
-      "audience":     { "score": 1, "rationale": "..." },
-      "format":       { "score": 1, "rationale": "..." },
-      "constraints":  { "score": 1, "rationale": "..." },
-      "examples":     { "score": 1, "rationale": "..." }
-    },
-    "refined": {
-      "specificity":  { "score": 5, "rationale": "..." },
-      "audience":     { "score": 5, "rationale": "..." },
-      "format":       { "score": 5, "rationale": "..." },
-      "constraints":  { "score": 5, "rationale": "..." },
-      "examples":     { "score": 5, "rationale": "..." }
-    }
-  }
-}
-
-Rules for the changes array:
-- Include 3-6 changes maximum
-- Each change describes ONE distinct improvement
-- Titles are short (3-6 words)
-- Explanations are ONE concise sentence
-- Order changes from most impactful to least
-- If few changes were needed, include fewer (even 1-2)
-
-Rules for the scores object:
-- Score the rough prompt AS-PROVIDED, not as you wish it had been written
-- Score the refined prompt as you produced it
-- Use integers 1-5 only
-- Each rationale is ONE concise sentence
-
-${SCORING_RUBRIC}
-
-The JSON must be valid and parseable. Do not wrap it in markdown code fences.`;
-}
-
-function buildUserContent({ prompt, isFollowUp, previousRefined, feedback }) {
-  if (isFollowUp) {
-    return `Original rough prompt:
+Rough prompt:
 ${prompt}
+
+Refine this prompt and respond in the exact format specified.`;
+
+const FOLLOWUP_USER_TEMPLATE = (originalRough, previousRefined, feedback, category) => `Category: ${category}
+
+Original rough prompt:
+${originalRough}
 
 Previous refined version:
 ${previousRefined}
 
-User feedback for this iteration:
+User feedback for further refinement:
 ${feedback}
 
-Produce a new refined version that addresses the feedback. Score the original rough prompt and your new refined version.`;
-  }
-  return `Rough prompt:
-${prompt}`;
-}
+Apply the feedback to produce a new refined version. Score against the previous refined version (use it as the "rough" baseline).`;
 
-function parsePayload(payloadRaw) {
+/* ── Refiner stream parsing ────────────────────────────── */
+
+function parseRefinerResponse(fullText) {
+  const refined = (fullText.match(/<<<REFINED_PROMPT>>>([\s\S]*?)<<<CHANGES_JSON>>>/) || [])[1]?.trim() || '';
+  const changesRaw = (fullText.match(/<<<CHANGES_JSON>>>([\s\S]*?)<<<SCORES_JSON>>>/) || [])[1]?.trim() || '[]';
+  const scoresRaw = (fullText.match(/<<<SCORES_JSON>>>([\s\S]*?)<<<END>>>/) || [])[1]?.trim() || '{}';
+
   let changes = [];
   let scores = null;
-  if (!payloadRaw.trim()) return { changes, scores };
 
-  try {
-    const cleaned = payloadRaw
-      .replace(/^```json\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim();
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed.changes)) changes = parsed.changes;
-    if (parsed.scores && typeof parsed.scores === 'object') scores = parsed.scores;
-  } catch (parseError) {
-    console.warn('Failed to parse payload JSON:', payloadRaw.slice(0, 200));
-  }
+  try { changes = JSON.parse(changesRaw); } catch (e) { console.warn('Failed to parse changes JSON:', e); }
+  try { scores = JSON.parse(scoresRaw); } catch (e) { console.warn('Failed to parse scores JSON:', e); }
 
-  return { changes, scores };
+  return { refined, changes, scores };
 }
 
-async function runRefinement({ model, system, userContent, onChunk, onRefinedDone }) {
-  const startTime = Date.now();
+/* ── SSE helpers ───────────────────────────────────────── */
 
-  const stream = await anthropic.messages.stream({
-    model,
-    max_tokens: 2200,
-    system,
-    messages: [{ role: 'user', content: userContent }],
-  });
-
-  let buffer = '';
-  let delimiterFound = false;
-  let refinedSoFar = '';
-  let payloadRaw = '';
-
-  for await (const event of stream) {
-    if (event.type !== 'content_block_delta' || event.delta?.type !== 'text_delta') continue;
-    const chunk = event.delta.text;
-    buffer += chunk;
-
-    if (!delimiterFound) {
-      const idx = buffer.indexOf(DELIMITER);
-      if (idx === -1) {
-        const safeEmitLen = Math.max(0, buffer.length - DELIMITER.length);
-        const toEmit = buffer.slice(refinedSoFar.length, safeEmitLen);
-        if (toEmit) {
-          refinedSoFar += toEmit;
-          onChunk?.(toEmit);
-        }
-      } else {
-        const remaining = buffer.slice(refinedSoFar.length, idx);
-        if (remaining) {
-          refinedSoFar += remaining;
-          onChunk?.(remaining);
-        }
-        delimiterFound = true;
-        payloadRaw = buffer.slice(idx + DELIMITER.length);
-        onRefinedDone?.();
-      }
-    } else {
-      payloadRaw += chunk;
-    }
-  }
-
-  if (!delimiterFound) {
-    const remaining = buffer.slice(refinedSoFar.length);
-    if (remaining) onChunk?.(remaining);
-    onRefinedDone?.();
-  }
-
-  const finalMessage = await stream.finalMessage();
-  const usage = finalMessage.usage
-    ? {
-        inputTokens: finalMessage.usage.input_tokens || 0,
-        outputTokens: finalMessage.usage.output_tokens || 0,
-      }
-    : { inputTokens: 0, outputTokens: 0 };
-
-  const latencyMs = Date.now() - startTime;
-  const { changes, scores } = parsePayload(payloadRaw);
-
-  return { refined: refinedSoFar, changes, scores, usage, latencyMs };
-}
-
-/**
- * Run a prompt directly (no refinement, no scoring). Used by /api/test-prompt
- * to send a prompt to a model as if it were a real prompt to execute.
- * Streams text back. Returns usage and latency at the end.
- */
-async function runRawPrompt({ model, prompt, onChunk }) {
-  const startTime = Date.now();
-
-  const stream = await anthropic.messages.stream({
-    model,
-    max_tokens: 2200,
-    // No system prompt. The refined prompt IS the prompt.
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-      onChunk?.(event.delta.text);
-    }
-  }
-
-  const finalMessage = await stream.finalMessage();
-  const usage = finalMessage.usage
-    ? {
-        inputTokens: finalMessage.usage.input_tokens || 0,
-        outputTokens: finalMessage.usage.output_tokens || 0,
-      }
-    : { inputTokens: 0, outputTokens: 0 };
-
-  const latencyMs = Date.now() - startTime;
-  return { usage, latencyMs };
-}
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model, previousRefined, feedback } = req.body;
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Prompt is required.' });
-  }
-
-  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
-  const isFollowUp = Boolean(previousRefined && feedback);
-
+function setupSSE(res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+}
 
-  function send(event, data) {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+function sendEvent(res, eventName, data) {
+  res.write(`event: ${eventName}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+/* ── /api/improve ─────────────────────────────────────── */
+
+app.post('/api/improve', async (req, res) => {
+  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback } = req.body;
+
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'Prompt is required and must be a string.' });
+  }
+  if (prompt.length > 10000) {
+    return res.status(400).json({ error: 'Prompt too long. Max 10,000 characters.' });
   }
 
-  try {
-    const system = buildSystemPrompt(category, isFollowUp);
-    const userContent = buildUserContent({ prompt, isFollowUp, previousRefined, feedback });
+  setupSSE(res);
 
-    const { changes, scores, usage, latencyMs } = await runRefinement({
-      model: safeModel,
-      system,
-      userContent,
-      onChunk: (text) => send('refined-chunk', { text }),
-      onRefinedDone: () => send('refined-done', {}),
+  const userMessage = (previousRefined && feedback)
+    ? FOLLOWUP_USER_TEMPLATE(prompt, previousRefined, feedback, category)
+    : REFINER_USER_TEMPLATE(prompt, category);
+
+  const startTime = Date.now();
+  let accumulatedText = '';
+  let refinedSent = false;
+  let lastRefinedSent = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  try {
+    const stream = await client.messages.stream({
+      model,
+      max_tokens: 4000,
+      system: REFINER_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
     });
 
-    send('changes', { changes });
-    send('scores', { scores });
-    send('done', { modelUsed: safeModel, usage, latencyMs });
-    res.end();
-  } catch (error) {
-    console.error('Anthropic API error:', error);
-    send('error', { error: 'Failed to refine prompt.' });
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        const chunk = event.delta.text;
+        accumulatedText += chunk;
+
+        const refinedMatch = accumulatedText.match(/<<<REFINED_PROMPT>>>([\s\S]*?)(<<<CHANGES_JSON>>>|$)/);
+        if (refinedMatch) {
+          const currentRefined = refinedMatch[1];
+          if (currentRefined.length > lastRefinedSent.length) {
+            const newChars = currentRefined.slice(lastRefinedSent.length);
+            const cleanNewChars = newChars.replace(/<<<CHANGES_JSON>>>$/, '').replace(/<<<CHANGES_JSON?$/, '').replace(/<<<C?H?A?N?$/, '');
+            if (cleanNewChars) {
+              sendEvent(res, 'refined-chunk', { text: cleanNewChars });
+              lastRefinedSent += cleanNewChars;
+            }
+          }
+
+          if (!refinedSent && accumulatedText.includes('<<<CHANGES_JSON>>>')) {
+            refinedSent = true;
+            sendEvent(res, 'refined-done', {});
+          }
+        }
+      }
+
+      if (event.type === 'message_delta' && event.usage) {
+        outputTokens = event.usage.output_tokens || outputTokens;
+      }
+      if (event.type === 'message_start' && event.message?.usage) {
+        inputTokens = event.message.usage.input_tokens || 0;
+      }
+    }
+
+    const parsed = parseRefinerResponse(accumulatedText);
+
+    if (parsed.changes.length > 0) {
+      sendEvent(res, 'changes', { changes: parsed.changes });
+    }
+    if (parsed.scores) {
+      sendEvent(res, 'scores', { scores: parsed.scores });
+    }
+
+    const latencyMs = Date.now() - startTime;
+
+    sendEvent(res, 'done', {
+      usage: { inputTokens, outputTokens },
+      latencyMs,
+    });
+  } catch (err) {
+    console.error('Refinement error:', err);
+    sendEvent(res, 'error', { error: err.message || 'Refinement failed.' });
+  } finally {
     res.end();
   }
 });
+
+/* ── /api/improve-compare ─────────────────────────────── */
 
 app.post('/api/improve-compare', async (req, res) => {
   const { prompt, category = 'general', models } = req.body;
@@ -321,133 +185,235 @@ app.post('/api/improve-compare', async (req, res) => {
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required.' });
   }
-
   if (!Array.isArray(models) || models.length === 0) {
-    return res.status(400).json({ error: 'At least one model is required.' });
+    return res.status(400).json({ error: 'Models array is required.' });
+  }
+  if (models.length > 4) {
+    return res.status(400).json({ error: 'Maximum 4 models for comparison.' });
   }
 
-  const safeModels = [...new Set(models.filter((m) => ALLOWED_MODELS.has(m)))];
-  if (safeModels.length === 0) {
-    return res.status(400).json({ error: 'No valid models provided.' });
-  }
+  setupSSE(res);
+  sendEvent(res, 'compare-start', { models });
 
-  if (safeModels.length > 4) {
-    return res.status(400).json({ error: 'Maximum 4 models per comparison.' });
-  }
+  const userMessage = REFINER_USER_TEMPLATE(prompt, category);
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
+  const tasks = models.map(async (modelId) => {
+    const startTime = Date.now();
+    let accumulatedText = '';
+    let lastRefinedSent = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
 
-  let writeChain = Promise.resolve();
-  function send(event, data) {
-    writeChain = writeChain.then(() => {
-      try {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      } catch (err) {
-        // Client disconnect
-      }
-    });
-    return writeChain;
-  }
-
-  send('compare-start', { models: safeModels });
-
-  const system = buildSystemPrompt(category, false);
-  const userContent = buildUserContent({ prompt, isFollowUp: false });
-
-  const runs = safeModels.map(async (modelId) => {
     try {
-      const { changes, scores, usage, latencyMs } = await runRefinement({
+      const stream = await client.messages.stream({
         model: modelId,
-        system,
-        userContent,
-        onChunk: (text) => send('model-chunk', { modelId, text }),
-        onRefinedDone: () => send('model-refined-done', { modelId }),
+        max_tokens: 4000,
+        system: REFINER_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
       });
-      await send('model-changes', { modelId, changes });
-      await send('model-scores', { modelId, scores });
-      await send('model-done', { modelId, usage, latencyMs });
-    } catch (error) {
-      console.error(`Model ${modelId} failed:`, error);
-      await send('model-error', { modelId, error: 'This model failed to respond.' });
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          accumulatedText += event.delta.text;
+          const refinedMatch = accumulatedText.match(/<<<REFINED_PROMPT>>>([\s\S]*?)(<<<CHANGES_JSON>>>|$)/);
+          if (refinedMatch) {
+            const currentRefined = refinedMatch[1];
+            if (currentRefined.length > lastRefinedSent.length) {
+              const newChars = currentRefined.slice(lastRefinedSent.length);
+              const cleanNewChars = newChars.replace(/<<<CHANGES_JSON>>>$/, '').replace(/<<<CHANGES_JSON?$/, '').replace(/<<<C?H?A?N?$/, '');
+              if (cleanNewChars) {
+                sendEvent(res, 'model-chunk', { modelId, text: cleanNewChars });
+                lastRefinedSent += cleanNewChars;
+              }
+            }
+          }
+        }
+        if (event.type === 'message_delta' && event.usage) {
+          outputTokens = event.usage.output_tokens || outputTokens;
+        }
+        if (event.type === 'message_start' && event.message?.usage) {
+          inputTokens = event.message.usage.input_tokens || 0;
+        }
+      }
+
+      const parsed = parseRefinerResponse(accumulatedText);
+      if (parsed.changes.length > 0) {
+        sendEvent(res, 'model-changes', { modelId, changes: parsed.changes });
+      }
+      if (parsed.scores) {
+        sendEvent(res, 'model-scores', { modelId, scores: parsed.scores });
+      }
+      sendEvent(res, 'model-done', {
+        modelId,
+        usage: { inputTokens, outputTokens },
+        latencyMs: Date.now() - startTime,
+      });
+    } catch (err) {
+      console.error(`Comparison error for ${modelId}:`, err);
+      sendEvent(res, 'model-error', { modelId, error: err.message || 'Failed.' });
     }
   });
 
-  await Promise.allSettled(runs);
-  await send('compare-done', {});
+  await Promise.allSettled(tasks);
+  sendEvent(res, 'compare-done', {});
   res.end();
 });
 
-/**
- * Test endpoint. Takes one or two prompts and runs each through the chosen
- * model directly — no refinement, no scoring, no system prompt.
- * Used for A/B testing whether a refined prompt actually produces better
- * real-world output than the rough version.
- *
- * Body: { prompts: [{ id, prompt }], model }
- * Streams events keyed by the prompt's id so the client can show outputs
- * side by side as they arrive.
- */
+/* ── /api/test-prompt ─────────────────────────────────── */
+
 app.post('/api/test-prompt', async (req, res) => {
-  const { prompts, model } = req.body;
+  const { prompts, model = 'claude-sonnet-4-6' } = req.body;
 
   if (!Array.isArray(prompts) || prompts.length === 0) {
-    return res.status(400).json({ error: 'At least one prompt is required.' });
+    return res.status(400).json({ error: 'Prompts array is required.' });
   }
 
-  if (prompts.length > 2) {
-    return res.status(400).json({ error: 'Maximum 2 prompts per test.' });
-  }
+  setupSSE(res);
+  sendEvent(res, 'test-start', { count: prompts.length });
 
-  for (const p of prompts) {
-    if (!p.id || typeof p.prompt !== 'string' || !p.prompt.trim()) {
-      return res.status(400).json({ error: 'Each prompt needs an id and non-empty text.' });
-    }
-  }
+  const tasks = prompts.map(async ({ id, prompt }) => {
+    const startTime = Date.now();
+    let inputTokens = 0;
+    let outputTokens = 0;
 
-  const safeModel = ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  let writeChain = Promise.resolve();
-  function send(event, data) {
-    writeChain = writeChain.then(() => {
-      try {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      } catch (err) {
-        // Client disconnect
-      }
-    });
-    return writeChain;
-  }
-
-  send('test-start', { model: safeModel, count: prompts.length });
-
-  const runs = prompts.map(async (p) => {
     try {
-      const { usage, latencyMs } = await runRawPrompt({
-        model: safeModel,
-        prompt: p.prompt,
-        onChunk: (text) => send('test-chunk', { id: p.id, text }),
+      const stream = await client.messages.stream({
+        model,
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }],
       });
-      await send('test-done', { id: p.id, usage, latencyMs });
-    } catch (error) {
-      console.error(`Test for ${p.id} failed:`, error);
-      await send('test-error', { id: p.id, error: 'Test run failed.' });
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          sendEvent(res, 'test-chunk', { id, text: event.delta.text });
+        }
+        if (event.type === 'message_delta' && event.usage) {
+          outputTokens = event.usage.output_tokens || outputTokens;
+        }
+        if (event.type === 'message_start' && event.message?.usage) {
+          inputTokens = event.message.usage.input_tokens || 0;
+        }
+      }
+
+      sendEvent(res, 'test-done', {
+        id,
+        usage: { inputTokens, outputTokens },
+        latencyMs: Date.now() - startTime,
+      });
+    } catch (err) {
+      console.error(`Test error for ${id}:`, err);
+      sendEvent(res, 'test-error', { id, error: err.message || 'Test failed.' });
     }
   });
 
-  await Promise.allSettled(runs);
-  await send('test-complete', {});
+  await Promise.allSettled(tasks);
+  sendEvent(res, 'test-complete', {});
   res.end();
 });
 
-const PORT = process.env.PORT || 3001;
+/* ── /api/run-prompt ──────────────────────────────────── */
+
+// Accepts a conversation as a list of messages and streams Claude's
+// response. The previous version of this endpoint listened to req.on('close')
+// to detect client disconnect and abort early — but that event fires
+// spuriously in Express + Node 20 during the SSE header flush, causing
+// the loop to exit immediately on the first iteration with zero chunks
+// sent. We now skip abort detection; if the user closes the drawer
+// mid-stream, the Anthropic call finishes in the background. Cost
+// impact is small for typical conversations and we can add proper
+// abort logic later.
+app.post('/api/run-prompt', async (req, res) => {
+  const { messages, model = 'claude-sonnet-4-6' } = req.body;
+
+  console.log('[run-prompt] request received, messages:', messages?.length, 'model:', model);
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'Messages array is required.' });
+  }
+  if (messages.length > 50) {
+    return res.status(400).json({ error: 'Conversation too long. Max 50 messages.' });
+  }
+
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object') {
+      return res.status(400).json({ error: 'Each message must be an object.' });
+    }
+    if (msg.role !== 'user' && msg.role !== 'assistant') {
+      return res.status(400).json({ error: 'Message role must be "user" or "assistant".' });
+    }
+    if (typeof msg.content !== 'string' || msg.content.trim() === '') {
+      return res.status(400).json({ error: 'Each message must have non-empty string content.' });
+    }
+    if (msg.content.length > 50000) {
+      return res.status(400).json({ error: 'Individual message exceeds 50,000 character limit.' });
+    }
+  }
+
+  if (messages[0].role !== 'user') {
+    return res.status(400).json({ error: 'First message must be from user.' });
+  }
+
+  setupSSE(res);
+
+  const startTime = Date.now();
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let chunkCount = 0;
+
+  try {
+    const stream = await client.messages.stream({
+      model,
+      max_tokens: 4096,
+      messages,
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        chunkCount++;
+        sendEvent(res, 'run-chunk', { text: event.delta.text });
+      }
+
+      if (event.type === 'message_delta' && event.usage) {
+        outputTokens = event.usage.output_tokens || outputTokens;
+      }
+
+      if (event.type === 'message_start' && event.message?.usage) {
+        inputTokens = event.message.usage.input_tokens || 0;
+      }
+    }
+
+    const latencyMs = Date.now() - startTime;
+    sendEvent(res, 'run-done', {
+      usage: { inputTokens, outputTokens },
+      latencyMs,
+    });
+    console.log('[run-prompt] done. chunks:', chunkCount, 'tokens in/out:', inputTokens, outputTokens, 'latency:', latencyMs + 'ms');
+  } catch (err) {
+    console.error('[run-prompt] ERROR:', err.message || err);
+    let userMessage = 'Failed to run prompt.';
+    if (err.status === 401) {
+      userMessage = 'API key is invalid or missing. Check your .env file.';
+    } else if (err.status === 429) {
+      userMessage = 'Rate limit reached. Wait a moment and try again.';
+    } else if (err.status === 529) {
+      userMessage = 'Anthropic API is overloaded. Try again in a few seconds.';
+    } else if (err.status === 400) {
+      userMessage = err.message || 'Bad request — your conversation may be malformed.';
+    } else if (err.message) {
+      userMessage = err.message;
+    }
+    sendEvent(res, 'run-error', { error: userMessage });
+  } finally {
+    res.end();
+  }
+});
+
+/* ── Healthcheck ──────────────────────────────────────── */
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server listening on http://localhost:${PORT}`);
 });

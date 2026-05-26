@@ -1,10 +1,21 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import './App.css';
 import { HELP_CONTENT } from './help-content.js';
 import { TEMPLATES } from './templates-content.js';
 import { exportMarkdown, exportJSON, exportCSV, importFile } from './io.js';
 import { lintPrompt, lintSummary } from './lint.js';
 import { scanForPII, hasCriticalFindings, groupFindings, CATEGORY_META } from './scan.js';
+import { RunDrawer, autoTitle } from './RunDrawer.jsx';
+import {
+  SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
+  UsageIcon, SendIcon, CheckIcon, SparkIcon, GaugeIcon, PencilIcon, TrashIcon,
+  ArrowRightIcon, CompareIcon, ChevronDownIcon, DownloadIcon, UploadIcon,
+  CloseIcon, ShieldIcon, KeyIcon, CardIcon, ContactIcon, PlayIcon, EyeIcon,
+  MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
+  ConversationsIcon, FunnelLogo,
+} from './icons.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -35,8 +46,11 @@ const STORAGE_HISTORY = 'prompt-improver-history';
 const STORAGE_SETTINGS = 'prompt-improver-settings';
 const STORAGE_SAVED = 'prompt-improver-saved';
 const STORAGE_USAGE = 'prompt-improver-usage';
+const STORAGE_CURRENT_CONVO = 'prompt-refinery-current-convo';
+const STORAGE_CONVERSATIONS = 'prompt-refinery-conversations';
 const MAX_HISTORY = 20;
 const MAX_USAGE_RECORDS = 500;
+const MAX_CONVERSATIONS = 50;
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
@@ -62,6 +76,7 @@ const DEFAULT_SETTINGS = {
   linterEnabled: true,
   piiScannerEnabled: true,
   testModel: DEFAULT_MODEL,
+  voiceEnabled: true,
 };
 
 function formatTime(timestamp) {
@@ -111,244 +126,38 @@ function formatLatency(ms) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/* ── Icons ───────────────────────────────────────────────── */
-
-function SidebarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <line x1="9" y1="4" x2="9" y2="20" />
-    </svg>
-  );
+function getSpeechRecognition() {
+  if (typeof window === 'undefined') return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function HistoryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-      <polyline points="3 3 3 8 8 8" />
-      <polyline points="12 7 12 12 15 14" />
-    </svg>
-  );
+function defaultPDFFilename() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  return `prompt-refinery-${stamp}`;
 }
 
-function TemplatesIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  );
+function sanitizeFilename(name) {
+  const cleaned = name
+    .replace(/[\/\\:*?"<>|\x00-\x1f]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .trim();
+  return cleaned || 'prompt-refinery-export';
 }
 
-function StarIcon({ filled = false }) {
-  return (
-    <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
-
-function HelpIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4" />
-      <circle cx="12" cy="17" r="0.5" fill="currentColor" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-function UsageIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="20" x2="12" y2="10" />
-      <line x1="18" y1="20" x2="18" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="16" />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="19" x2="12" y2="5" />
-      <polyline points="5 12 12 5 19 12" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3 L13.5 9 L19 10.5 L13.5 12 L12 18 L10.5 12 L5 10.5 L10.5 9 Z" />
-    </svg>
-  );
-}
-
-function GaugeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 14l4-4" />
-      <path d="M3.34 17a10 10 0 1 1 17.32 0" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="5" y1="12" x2="19" y2="12" />
-      <polyline points="12 5 19 12 12 19" />
-    </svg>
-  );
-}
-
-function CompareIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="5" width="7" height="14" rx="1.5" />
-      <rect x="14" y="5" width="7" height="14" rx="1.5" />
-      <line x1="10" y1="12" x2="14" y2="12" strokeDasharray="2 2" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
-
-function KeyIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="14" r="4" />
-      <path d="M11 11l9-9 3 3-3 3 3 3-3 3-3-3-3 3" />
-    </svg>
-  );
-}
-
-function CardIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <line x1="2" y1="10" x2="22" y2="10" />
-    </svg>
-  );
-}
-
-function ContactIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3" />
-    </svg>
-  );
-}
-
-function FunnelLogo() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 6 L27 6 L19 16 L19 26 L13 28 L13 16 Z" />
-      <line x1="9" y1="11" x2="23" y2="11" opacity="0.5" />
-    </svg>
-  );
-}
-
-const RAIL_ITEMS = [
-  { id: 'history', label: 'History', icon: HistoryIcon },
-  { id: 'saved', label: 'Saved prompts', icon: StarIcon },
-  { id: 'templates', label: 'Templates', icon: TemplatesIcon },
-  { id: 'usage', label: 'Usage & cost', icon: UsageIcon },
-  { id: 'help', label: 'Help & Documentation', icon: HelpIcon },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon },
+// Left rail: Conversations slotted in just after History since it's another
+// "things you've done" view. Order chosen to keep similar concepts together.
+const LEFT_RAIL_ITEMS = [
+  { id: 'history',       label: 'History',                icon: HistoryIcon },
+  { id: 'conversations', label: 'Conversations',          icon: ConversationsIcon },
+  { id: 'saved',         label: 'Saved prompts',          icon: StarIcon },
+  { id: 'templates',     label: 'Templates',              icon: TemplatesIcon },
+  { id: 'usage',         label: 'Usage & cost',           icon: UsageIcon },
+  { id: 'help',          label: 'Help & Documentation',   icon: HelpIcon },
+  { id: 'settings',      label: 'Settings',               icon: SettingsIcon },
 ];
 
 function CategoryIcon({ category }) {
@@ -589,7 +398,589 @@ function PIIWarningModal({ findings, onContinue, onCancel }) {
   );
 }
 
-/* ── Drawer views ────────────────────────────────────────── */
+/* ── PDF Preview modal ──────────────────────────────────── */
+
+const PDF_SECTIONS = [
+  { id: 'rough',      label: 'Rough prompt' },
+  { id: 'refined',    label: 'Refined prompt' },
+  { id: 'changes',    label: 'What changed' },
+  { id: 'scores',     label: 'Quality scores' },
+  { id: 'abtest',     label: 'A/B test results' },
+  { id: 'comparison', label: 'Model comparison' },
+];
+
+function PDFPreviewModal({
+  roughPrompt, category, refinedPrompt, changes, scores,
+  primaryModel, primaryUsage, primaryLatencyMs,
+  abTest, testModel, comparison, scoresChartRef, onClose,
+}) {
+  const [filename, setFilename] = useState(defaultPDFFilename());
+  const [pdfBlob, setPdfBlob] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [status, setStatus] = useState('generating');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const abTestPresent = Boolean(abTest && (abTest.refined?.complete || abTest.rough?.complete));
+  const comparisonPresent = Boolean(comparison?.columns?.length);
+
+  const [sections, setSections] = useState(() => ({
+    rough: Boolean(roughPrompt),
+    refined: Boolean(refinedPrompt),
+    changes: Boolean(changes?.length),
+    scores: Boolean(scores?.refined),
+    abtest: abTestPresent,
+    comparison: comparisonPresent,
+  }));
+
+  function toggleSection(id) {
+    setSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  const availableSections = useMemo(() => {
+    const out = [];
+    if (roughPrompt) out.push('rough');
+    if (refinedPrompt) out.push('refined');
+    if (changes?.length) out.push('changes');
+    if (scores?.refined) out.push('scores');
+    if (abTestPresent) out.push('abtest');
+    if (comparisonPresent) out.push('comparison');
+    return out;
+  }, [roughPrompt, refinedPrompt, changes, scores, abTestPresent, comparisonPresent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      generatePDF();
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
+
+  async function generatePDF() {
+    try {
+      setStatus('generating');
+
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+        setPdfUrl(null);
+      }
+
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      let chartImageData = null;
+      if (sections.scores && scoresChartRef?.current) {
+        try {
+          const canvas = await html2canvas(scoresChartRef.current, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+          });
+          chartImageData = canvas.toDataURL('image/png');
+        } catch (err) {
+          console.warn('Chart rasterization failed, continuing without chart image:', err);
+        }
+      }
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'letter',
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 54;
+      const contentWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      function ensureSpace(needed) {
+        if (y + needed > pageHeight - margin - 20) {
+          addFooter();
+          doc.addPage();
+          y = margin;
+        }
+      }
+
+      function addFooter() {
+        const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generated by Prompt Refinery`, margin, pageHeight - margin / 2);
+        doc.text(`Page ${currentPage}`, pageWidth - margin, pageHeight - margin / 2, { align: 'right' });
+      }
+
+      function drawSectionHeader(label) {
+        ensureSpace(40);
+        doc.setFontSize(10);
+        doc.setTextColor(120);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, margin, y);
+        y += 14;
+      }
+
+      function drawParagraphChunked(text, fontSize, color, italic = false) {
+        doc.setFontSize(fontSize);
+        doc.setTextColor(color);
+        doc.setFont('helvetica', italic ? 'italic' : 'normal');
+        const lines = doc.splitTextToSize(text || '(empty)', contentWidth);
+        const lineHeight = fontSize + 3;
+        let i = 0;
+        while (i < lines.length) {
+          const remaining = pageHeight - margin - 20 - y;
+          const linesFit = Math.max(1, Math.floor(remaining / lineHeight));
+          const chunk = lines.slice(i, i + linesFit);
+          doc.text(chunk, margin, y);
+          y += chunk.length * lineHeight;
+          i += chunk.length;
+          if (i < lines.length) {
+            addFooter();
+            doc.addPage();
+            y = margin;
+          }
+        }
+      }
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.setFont('helvetica', 'normal');
+      doc.text('PROMPT REFINERY', margin, y);
+      const dateStr = new Date().toLocaleDateString(undefined, {
+        year: 'numeric', month: 'long', day: 'numeric',
+      });
+      doc.text(dateStr, pageWidth - margin, y, { align: 'right' });
+      y += 8;
+
+      doc.setDrawColor(220);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 24;
+
+      doc.setFontSize(20);
+      doc.setTextColor(40);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Refined Prompt', margin, y);
+      y += 22;
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.setFont('helvetica', 'normal');
+      const metaParts = [
+        `Model: ${modelShortName(primaryModel)}`,
+        `Category: ${category}`,
+      ];
+      doc.text(metaParts.join('   •   '), margin, y);
+      y += 24;
+
+      if (sections.rough && roughPrompt) {
+        drawSectionHeader('ROUGH PROMPT');
+        drawParagraphChunked(roughPrompt, 10, 90, true);
+        y += 14;
+      }
+
+      if (sections.refined && refinedPrompt) {
+        drawSectionHeader('REFINED PROMPT');
+        drawParagraphChunked(refinedPrompt, 11, 40, false);
+        y += 14;
+      }
+
+      if (sections.changes && changes?.length > 0) {
+        drawSectionHeader('WHAT CHANGED');
+
+        changes.forEach((change, idx) => {
+          const numStr = `${idx + 1}.`;
+          const titleText = change.title || '';
+          const explText = change.explanation || '';
+
+          const titleLines = doc.splitTextToSize(titleText, contentWidth - 22);
+          const explLines = doc.splitTextToSize(explText, contentWidth - 22);
+          const blockHeight = titleLines.length * 13 + explLines.length * 12 + 14;
+          ensureSpace(blockHeight);
+
+          doc.setFontSize(10);
+          doc.setTextColor(180, 100, 70);
+          doc.setFont('helvetica', 'bold');
+          doc.text(numStr, margin, y);
+
+          doc.setTextColor(40);
+          doc.setFont('helvetica', 'bold');
+          doc.text(titleLines, margin + 18, y);
+          y += titleLines.length * 13;
+
+          doc.setFontSize(9.5);
+          doc.setTextColor(90);
+          doc.setFont('helvetica', 'normal');
+          doc.text(explLines, margin + 18, y);
+          y += explLines.length * 12 + 10;
+        });
+        y += 8;
+      }
+
+      if (sections.scores && scores?.refined) {
+        drawSectionHeader('QUALITY SCORE');
+
+        const roughAvg = averageScore(scores.rough);
+        const refinedAvg = averageScore(scores.refined);
+        const lift = (roughAvg !== null && refinedAvg !== null) ? refinedAvg - roughAvg : null;
+
+        doc.setFontSize(11);
+        doc.setTextColor(40);
+        doc.setFont('helvetica', 'normal');
+        let summary = '';
+        if (roughAvg !== null) summary += `Rough: ${roughAvg.toFixed(1)}/5   →   `;
+        summary += `Refined: ${refinedAvg.toFixed(1)}/5`;
+        if (lift !== null && lift > 0) summary += `   (+${lift.toFixed(1)} lift)`;
+        doc.text(summary, margin, y);
+        y += 18;
+
+        if (chartImageData) {
+          const chartMaxHeight = 200;
+          ensureSpace(chartMaxHeight + 10);
+          try {
+            doc.addImage(chartImageData, 'PNG', margin, y, contentWidth, chartMaxHeight, undefined, 'FAST');
+            y += chartMaxHeight + 14;
+          } catch (err) {
+            console.warn('Chart embed failed:', err);
+          }
+        }
+
+        SCORE_DIMENSIONS.forEach((d) => {
+          const refined = scores.refined?.[d.id];
+          const rough = scores.rough?.[d.id];
+          if (!refined) return;
+
+          const refScoreStr = `${refined.score}/5`;
+          const roughScoreStr = rough?.score !== undefined ? `${rough.score} → ` : '';
+
+          ensureSpace(34);
+          doc.setFontSize(10);
+          doc.setTextColor(40);
+          doc.setFont('helvetica', 'bold');
+          doc.text(d.label, margin, y);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(120);
+          doc.text(`${roughScoreStr}${refScoreStr}`, pageWidth - margin, y, { align: 'right' });
+          y += 12;
+
+          if (refined.rationale) {
+            doc.setFontSize(9);
+            doc.setTextColor(110);
+            doc.setFont('helvetica', 'normal');
+            const ratLines = doc.splitTextToSize(refined.rationale, contentWidth);
+            ensureSpace(ratLines.length * 11 + 4);
+            doc.text(ratLines, margin, y);
+            y += ratLines.length * 11 + 6;
+          }
+        });
+        y += 8;
+      }
+
+      if (sections.abtest && abTestPresent) {
+        drawSectionHeader('A/B TEST RESULTS');
+
+        doc.setFontSize(9.5);
+        doc.setTextColor(110);
+        doc.setFont('helvetica', 'italic');
+        const testHeader = `Outputs from ${modelShortName(testModel)}. Comparing what the rough vs refined prompt actually produces.`;
+        const testHeaderLines = doc.splitTextToSize(testHeader, contentWidth);
+        doc.text(testHeaderLines, margin, y);
+        y += testHeaderLines.length * 11 + 10;
+
+        if (abTest.rough?.text) {
+          ensureSpace(40);
+          doc.setFontSize(10);
+          doc.setTextColor(150);
+          doc.setFont('helvetica', 'bold');
+          doc.text('From rough prompt', margin, y);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(140);
+          const roughCost = abTest.rough?.usage ? computeCost(testModel, abTest.rough.usage) : null;
+          const roughMeta = [
+            roughCost !== null ? formatCost(roughCost) : null,
+            abTest.rough?.latencyMs ? formatLatency(abTest.rough.latencyMs) : null,
+          ].filter(Boolean).join('   •   ');
+          if (roughMeta) {
+            doc.text(roughMeta, pageWidth - margin, y, { align: 'right' });
+          }
+          y += 14;
+
+          drawParagraphChunked(abTest.rough.text, 10, 60, false);
+          y += 16;
+        }
+
+        if (abTest.refined?.text) {
+          ensureSpace(40);
+          doc.setFontSize(10);
+          doc.setTextColor(180, 100, 70);
+          doc.setFont('helvetica', 'bold');
+          doc.text('From refined prompt', margin, y);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(140);
+          const refinedCost = abTest.refined?.usage ? computeCost(testModel, abTest.refined.usage) : null;
+          const refinedMeta = [
+            refinedCost !== null ? formatCost(refinedCost) : null,
+            abTest.refined?.latencyMs ? formatLatency(abTest.refined.latencyMs) : null,
+          ].filter(Boolean).join('   •   ');
+          if (refinedMeta) {
+            doc.text(refinedMeta, pageWidth - margin, y, { align: 'right' });
+          }
+          y += 14;
+
+          drawParagraphChunked(abTest.refined.text, 10, 40, false);
+          y += 16;
+        }
+      }
+
+      if (sections.comparison && comparisonPresent) {
+        drawSectionHeader('MODEL COMPARISON');
+
+        doc.setFontSize(9.5);
+        doc.setTextColor(110);
+        doc.setFont('helvetica', 'italic');
+        const compHeader = `Same rough prompt refined by ${comparison.columns.length + 1} models. Primary refinement shown first, then alternates.`;
+        const compHeaderLines = doc.splitTextToSize(compHeader, contentWidth);
+        doc.text(compHeaderLines, margin, y);
+        y += compHeaderLines.length * 11 + 12;
+
+        comparison.columns.forEach((col) => {
+          if (col.error) {
+            ensureSpace(36);
+            doc.setFontSize(10);
+            doc.setTextColor(180, 80, 80);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${modelShortName(col.modelId)} (failed)`, margin, y);
+            y += 12;
+            doc.setFontSize(9);
+            doc.setTextColor(140);
+            doc.setFont('helvetica', 'normal');
+            const errLines = doc.splitTextToSize(col.error, contentWidth);
+            doc.text(errLines, margin, y);
+            y += errLines.length * 11 + 14;
+            return;
+          }
+
+          ensureSpace(40);
+          doc.setFontSize(11);
+          doc.setTextColor(180, 100, 70);
+          doc.setFont('helvetica', 'bold');
+          doc.text(modelShortName(col.modelId), margin, y);
+
+          const colCost = col.usage ? computeCost(col.modelId, col.usage) : null;
+          const colScore = averageScore(col.scores?.refined);
+          const colMeta = [
+            colScore !== null ? `${colScore.toFixed(1)}/5` : null,
+            colCost !== null ? formatCost(colCost) : null,
+            col.latencyMs ? formatLatency(col.latencyMs) : null,
+          ].filter(Boolean).join('   •   ');
+          if (colMeta) {
+            doc.setFontSize(9);
+            doc.setTextColor(140);
+            doc.setFont('helvetica', 'normal');
+            doc.text(colMeta, pageWidth - margin, y, { align: 'right' });
+          }
+          y += 16;
+
+          if (col.refined) {
+            drawParagraphChunked(col.refined, 10, 40, false);
+            y += 8;
+          }
+
+          if (col.changes?.length > 0) {
+            ensureSpace(30);
+            doc.setFontSize(9);
+            doc.setTextColor(120);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Changes:', margin, y);
+            y += 12;
+
+            col.changes.forEach((c, i) => {
+              const cTitle = c.title || '';
+              const cExpl = c.explanation || '';
+              const cTitleLines = doc.splitTextToSize(`${i + 1}. ${cTitle}`, contentWidth - 8);
+              const cExplLines = doc.splitTextToSize(cExpl, contentWidth - 16);
+              const bHeight = cTitleLines.length * 11 + cExplLines.length * 10 + 10;
+              ensureSpace(bHeight);
+
+              doc.setFontSize(9.5);
+              doc.setTextColor(60);
+              doc.setFont('helvetica', 'bold');
+              doc.text(cTitleLines, margin, y);
+              y += cTitleLines.length * 11;
+
+              doc.setFontSize(9);
+              doc.setTextColor(110);
+              doc.setFont('helvetica', 'normal');
+              doc.text(cExplLines, margin + 8, y);
+              y += cExplLines.length * 10 + 6;
+            });
+          }
+          y += 12;
+        });
+      }
+
+      addFooter();
+
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfBlob(blob);
+      setPdfUrl(url);
+      setStatus('ready');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      setErrorMsg(err.message || 'PDF generation failed.');
+      setStatus('error');
+    }
+  }
+
+  function handleDownload() {
+    if (!pdfBlob) return;
+    const safe = sanitizeFilename(filename);
+    const finalName = safe.endsWith('.pdf') ? safe : `${safe}.pdf`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(pdfBlob);
+    link.download = finalName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    setTimeout(() => onClose(), 250);
+  }
+
+  function handleOpenInNewTab() {
+    if (!pdfUrl) return;
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  function handleBackdropClick(e) {
+    if (e.target === e.currentTarget) onClose();
+  }
+
+  const sectionCount = availableSections.filter((id) => sections[id]).length;
+  const allSectionsCount = availableSections.length;
+
+  return (
+    <div className="modal-backdrop" onClick={handleBackdropClick}>
+      <div className="modal pdf-modal" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
+        <div className="modal-head">
+          <h2 id="pdf-title">Preview & download PDF</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close" title="Close">
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="pdf-sections-panel">
+          <div className="pdf-sections-label">
+            Sections to include ({sectionCount} of {allSectionsCount})
+          </div>
+          <div className="pdf-sections-list">
+            {PDF_SECTIONS.map((s) => {
+              const available = availableSections.includes(s.id);
+              if (!available) return null;
+              const checked = sections[s.id];
+              return (
+                <button
+                  type="button"
+                  key={s.id}
+                  className={`pdf-section-chip ${checked ? 'on' : ''}`}
+                  onClick={() => toggleSection(s.id)}
+                  disabled={status === 'generating'}
+                >
+                  <span className="pdf-section-chip-check">
+                    {checked && <CheckIcon />}
+                  </span>
+                  <span>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="pdf-modal-body">
+          {status === 'generating' && (
+            <div className="pdf-loading">
+              <span className="thinking-dots">
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+              </span>
+              <span>Generating PDF preview…</span>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="pdf-error">
+              <strong>PDF generation failed.</strong>
+              <div>{errorMsg}</div>
+              <div className="pdf-error-hint">
+                Check the browser console for details. You can close this dialog and try again.
+              </div>
+            </div>
+          )}
+
+          {status === 'ready' && pdfUrl && (
+            <iframe src={pdfUrl} className="pdf-preview-frame" title="PDF preview" />
+          )}
+        </div>
+
+        <div className="modal-foot pdf-modal-foot">
+          <div className="pdf-filename-row">
+            <label htmlFor="pdf-filename" className="pdf-filename-label">Filename</label>
+            <input
+              id="pdf-filename"
+              type="text"
+              className="pdf-filename-input"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              placeholder={defaultPDFFilename()}
+              disabled={status !== 'ready'}
+            />
+            <span className="pdf-filename-ext">.pdf</span>
+          </div>
+          <div className="pdf-modal-actions">
+            <button className="pii-modal-btn pii-modal-btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="pii-modal-btn pii-modal-btn-secondary"
+              onClick={handleOpenInNewTab}
+              disabled={status !== 'ready'}
+              title="Open in a new tab where text selection works"
+            >
+              <ExternalLinkIcon />
+              <span>Open in new tab</span>
+            </button>
+            <button
+              className="pii-modal-btn pii-modal-btn-primary"
+              onClick={handleDownload}
+              disabled={status !== 'ready'}
+            >
+              <DownloadIcon />
+              <span>Download PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Drawer views (left rail) ────────────────────────────── */
 
 function DrawerLogo() {
   return (
@@ -611,11 +1002,7 @@ function HistoryView({ history, onLoad, onClear, onOpenImportExport }) {
       <div className="drawer-head">
         <h3>History</h3>
         <div className="drawer-head-actions">
-          <button
-            className="text-btn"
-            onClick={onOpenImportExport}
-            title="Export or import your prompt data"
-          >
+          <button className="text-btn" onClick={onOpenImportExport} title="Export or import your prompt data">
             Export / Import
           </button>
           {history.length > 0 && (
@@ -838,7 +1225,7 @@ function UsageView({ usage, onClear }) {
 
     const avgLatency = latencyCount > 0 ? totalLatency / latencyCount : null;
     const modelEntries = Object.entries(byModel)
-      .map(([model, stats]) => ({ model, ...stats }))
+      .map(([model, modelStats]) => ({ model, ...modelStats }))
       .sort((a, b) => b.cost - a.cost);
 
     const dayEntries = [];
@@ -1003,7 +1390,7 @@ function HelpView() {
   );
 }
 
-function SettingsView({ settings, onChange, onReset }) {
+function SettingsView({ settings, onChange, onReset, speechSupported }) {
   const claudeModels = MODELS.filter((m) => m.provider === 'Anthropic');
   const comingSoon = MODELS.filter((m) => !m.available);
 
@@ -1072,6 +1459,39 @@ function SettingsView({ settings, onChange, onReset }) {
         <div className="settings-divider" />
 
         <div className="settings-group">
+          <div className="settings-group-label">Voice input</div>
+          <div className="settings-group-hint">
+            {speechSupported
+              ? 'Dictate rough prompts using your microphone. Transcription uses your browser\'s built-in speech recognition. On Chrome this routes through Google\'s servers; on Safari it stays on-device.'
+              : 'Your browser does not support speech recognition. Try Chrome or Safari.'}
+          </div>
+          <button
+            type="button"
+            className={`toggle-row ${settings.voiceEnabled && speechSupported ? 'on' : ''}`}
+            onClick={() => speechSupported && onChange({ voiceEnabled: !settings.voiceEnabled })}
+            role="switch"
+            aria-checked={settings.voiceEnabled && speechSupported}
+            disabled={!speechSupported}
+          >
+            <div className="toggle-row-text">
+              <div className="toggle-row-label">Enable microphone button</div>
+              <div className="toggle-row-desc">
+                {!speechSupported
+                  ? 'Not available in this browser.'
+                  : settings.voiceEnabled
+                  ? 'Microphone button appears next to the send button.'
+                  : 'No microphone button is shown.'}
+              </div>
+            </div>
+            <div className="toggle-switch">
+              <div className="toggle-switch-thumb" />
+            </div>
+          </button>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-group">
           <div className="settings-group-label">Refinement model</div>
           <div className="settings-group-hint">
             Choose which AI model refines your prompts. Claude Sonnet 4.6 is the default.
@@ -1127,9 +1547,9 @@ function SettingsView({ settings, onChange, onReset }) {
         <div className="settings-divider" />
 
         <div className="settings-group">
-          <div className="settings-group-label">Test runner model</div>
+          <div className="settings-group-label">Test runner & prompt execution model</div>
           <div className="settings-group-hint">
-            Which model executes prompts during A/B testing. Independent from the refinement model — pick based on the actual task complexity.
+            Which model executes prompts when you click "Run prompt" or run A/B tests. Independent from the refinement model — pick based on the actual task complexity. This same setting controls both features.
           </div>
 
           <div className="model-list">
@@ -1203,10 +1623,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
       if (result.invalidCount > 0) {
         parts.push(`${result.invalidCount} skipped as invalid.`);
       }
-      setImportStatus({
-        kind: 'success',
-        message: parts.join(' '),
-      });
+      setImportStatus({ kind: 'success', message: parts.join(' ') });
     } catch (err) {
       console.error(err);
       setImportStatus({
@@ -1227,12 +1644,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="ie-title">
         <div className="modal-head">
           <h2 id="ie-title">Export / Import</h2>
-          <button
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Close"
-            title="Close"
-          >
+          <button className="modal-close" onClick={onClose} aria-label="Close" title="Close">
             <CloseIcon />
           </button>
         </div>
@@ -1313,7 +1725,7 @@ function ImportExportModal({ history, saved, onClose, onImport }) {
   );
 }
 
-/* ── Display panels ──────────────────────────────────────── */
+/* ── Display panels (main area) ──────────────────────────── */
 
 function RoughPromptMessage({ text, category, isFollowUp }) {
   if (!text) return null;
@@ -1434,7 +1846,7 @@ function RadarChart({ scoreSet, variant, size = 'normal' }) {
   );
 }
 
-function ScoresPanel({ scores }) {
+function ScoresPanel({ scores, chartContainerRef }) {
   if (!scores || !scores.refined) return null;
 
   const roughAvg = averageScore(scores.rough);
@@ -1462,7 +1874,7 @@ function ScoresPanel({ scores }) {
         </div>
       </div>
 
-      <div className="scores-charts">
+      <div className="scores-charts" ref={chartContainerRef}>
         {hasRough && (
           <div className="scores-chart-block">
             <div className="scores-chart-caption">
@@ -1668,11 +2080,7 @@ function ComparisonColumn({ column, onUseVersion }) {
 
       {column.complete && (
         <div className="compare-col-actions">
-          <button
-            type="button"
-            className="compare-col-action"
-            onClick={handleCopy}
-          >
+          <button type="button" className="compare-col-action" onClick={handleCopy}>
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
           {!column.isPrimary && (
@@ -1714,7 +2122,10 @@ function ComparisonColumn({ column, onUseVersion }) {
   );
 }
 
-function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScores, primaryChanges, primaryUsage, primaryLatencyMs, onUseVersion }) {
+function ComparisonStrip({
+  comparison, primaryModel, primaryRefined, primaryScores, primaryChanges,
+  primaryUsage, primaryLatencyMs, onUseVersion, onClose, busy,
+}) {
   if (!comparison) return null;
 
   const primaryColumn = {
@@ -1737,14 +2148,19 @@ function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScor
         <span className="compare-strip-hint">
           Same rough prompt refined by {columns.length} models
         </span>
+        <button
+          className="abtest-close-btn compare-strip-close"
+          onClick={onClose}
+          disabled={busy}
+          aria-label="Close comparison results"
+          title="Close comparison results"
+        >
+          <CloseIcon />
+        </button>
       </div>
       <div className="compare-grid" data-cols={columns.length}>
         {columns.map((column) => (
-          <ComparisonColumn
-            key={column.modelId}
-            column={column}
-            onUseVersion={onUseVersion}
-          />
+          <ComparisonColumn key={column.modelId} column={column} onUseVersion={onUseVersion} />
         ))}
       </div>
     </div>
@@ -1753,7 +2169,7 @@ function ComparisonStrip({ comparison, primaryModel, primaryRefined, primaryScor
 
 /* ── A/B Test panel ──────────────────────────────────────── */
 
-function ABTestInvite({ disabled, onOpen }) {
+function ABTestInvite({ disabled, onOpen, hasResults }) {
   return (
     <button
       type="button"
@@ -1761,29 +2177,23 @@ function ABTestInvite({ disabled, onOpen }) {
       onClick={onOpen}
       disabled={disabled}
     >
-      <PlayIcon />
-      <span>Test this refined prompt (A/B vs rough)</span>
+      {hasResults ? <EyeIcon /> : <PlayIcon />}
+      <span>
+        {hasResults ? 'View A/B test results' : 'Test this refined prompt (A/B vs rough)'}
+      </span>
       <span className="abtest-chevron"><ChevronDownIcon /></span>
     </button>
   );
 }
 
 function ABTestPanel({
-  roughPrompt,
-  refinedPrompt,
-  testModel,
-  onClose,
-  onRun,
-  test,
-  busy,
+  roughPrompt, refinedPrompt, testModel, onClose, onRun, test, busy,
 }) {
-  const [mode, setMode] = useState('both'); // 'both' | 'refined-only'
+  const [mode, setMode] = useState('both');
 
-  const handleRun = () => {
-    onRun(mode);
-  };
+  const handleRun = () => { onRun(mode); };
 
-  const showResults = test && (test.rough.text || test.refined.text || test.rough.complete || test.refined.complete);
+  const showResults = test && (test.rough?.text || test.refined?.text || test.rough?.complete || test.refined?.complete);
 
   return (
     <div className="abtest-panel">
@@ -1799,7 +2209,7 @@ function ABTestPanel({
           onClick={onClose}
           disabled={busy}
           aria-label="Close A/B test panel"
-          title="Close"
+          title="Close panel (results are preserved)"
         >
           <CloseIcon />
         </button>
@@ -1847,11 +2257,7 @@ function ABTestPanel({
       )}
 
       {showResults && (
-        <ABTestResults
-          test={test}
-          mode={test.mode}
-          testModel={testModel}
-        />
+        <ABTestResults test={test} mode={test.mode} testModel={testModel} />
       )}
     </div>
   );
@@ -1866,19 +2272,9 @@ function ABTestResults({ test, mode, testModel }) {
 
       <div className={`abtest-results-grid ${mode === 'refined-only' ? 'single' : ''}`}>
         {mode === 'both' && (
-          <ABTestColumn
-            title="From rough prompt"
-            variant="rough"
-            result={test.rough}
-            modelId={testModel}
-          />
+          <ABTestColumn title="From rough prompt" variant="rough" result={test.rough} modelId={testModel} />
         )}
-        <ABTestColumn
-          title="From refined prompt"
-          variant="refined"
-          result={test.refined}
-          modelId={testModel}
-        />
+        <ABTestColumn title="From refined prompt" variant="refined" result={test.refined} modelId={testModel} />
       </div>
     </div>
   );
@@ -1926,11 +2322,7 @@ function ABTestColumn({ title, variant, result, modelId }) {
             {cost !== null && <span className="abtest-col-cost">{formatCost(cost)}</span>}
             {result.latencyMs && <span className="abtest-col-latency">{formatLatency(result.latencyMs)}</span>}
           </div>
-          <button
-            type="button"
-            className="abtest-col-copy"
-            onClick={handleCopy}
-          >
+          <button type="button" className="abtest-col-copy" onClick={handleCopy}>
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
@@ -2004,7 +2396,7 @@ function FollowUpPanel({ disabled, onSubmit }) {
   );
 }
 
-/* ── SSE stream parsers ──────────────────────────────────── */
+/* ── SSE stream consumers ────────────────────────────────── */
 
 async function consumeSSE(response, handlers) {
   if (!response.ok) {
@@ -2098,6 +2490,21 @@ async function streamTest({ url, body, onChunk, onDone, onError, onComplete, sig
   });
 }
 
+async function streamRunPrompt({ url, body, onChunk, onDone, onError, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'run-chunk': (p) => onChunk?.(p.text),
+    'run-done': (p) => onDone?.(p),
+    'run-error': (p) => onError?.(p.error || 'Run failed.'),
+  });
+}
+
 /* ── App ─────────────────────────────────────────────────── */
 
 function App() {
@@ -2129,19 +2536,37 @@ function App() {
   const [dismissedHints, setDismissedHints] = useState([]);
   const [piiFindings, setPiiFindings] = useState(null);
   const [piiPendingFeedback, setPiiPendingFeedback] = useState(null);
-
-  // A/B test state. abTestOpen controls panel visibility. abTest holds
-  // the in-flight or completed test results.
   const [abTestOpen, setAbTestOpen] = useState(false);
   const [abTest, setAbTest] = useState(null);
   const [abTesting, setAbTesting] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+  const speechSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
+
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+
+  // Run Prompt panel state.
+  // - currentConvo: the active conversation (null if none started yet)
+  // - conversations: list of past conversations (excludes currentConvo)
+  // - panelMode: 'conversation' or 'list'
+  // - running: true while a turn is streaming
+  // - convoDrawerOpen: whether the run drawer is currently open
+  const [currentConvo, setCurrentConvo] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [panelMode, setPanelMode] = useState('conversation');
+  const [running, setRunning] = useState(false);
+  const [convoDrawerOpen, setConvoDrawerOpen] = useState(false);
 
   const textareaRef = useRef(null);
   const conversationRef = useRef(null);
   const abortRef = useRef(null);
   const compareAbortRef = useRef(null);
   const testAbortRef = useRef(null);
+  const runAbortRef = useRef(null);
   const lintTimerRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const recognitionBaseRef = useRef('');
+  const scoresChartRef = useRef(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
@@ -2166,7 +2591,29 @@ function App() {
       try { setUsage(JSON.parse(savedUsage)); }
       catch { setUsage([]); }
     }
+    const savedConvo = localStorage.getItem(STORAGE_CURRENT_CONVO);
+    if (savedConvo) {
+      try { setCurrentConvo(JSON.parse(savedConvo)); }
+      catch { setCurrentConvo(null); }
+    }
+    const savedConvos = localStorage.getItem(STORAGE_CONVERSATIONS);
+    if (savedConvos) {
+      try { setConversations(JSON.parse(savedConvos)); }
+      catch { setConversations([]); }
+    }
   }, []);
+
+  useEffect(() => {
+    if (currentConvo) {
+      localStorage.setItem(STORAGE_CURRENT_CONVO, JSON.stringify(currentConvo));
+    } else {
+      localStorage.removeItem(STORAGE_CURRENT_CONVO);
+    }
+  }, [currentConvo]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_CONVERSATIONS, JSON.stringify(conversations));
+  }, [conversations]);
 
   useEffect(() => {
     if (!importExportOpen) return;
@@ -2188,6 +2635,24 @@ function App() {
     document.addEventListener('keydown', onEsc);
     return () => document.removeEventListener('keydown', onEsc);
   }, [piiFindings]);
+
+  useEffect(() => {
+    if (!pdfModalOpen) return;
+    function onEsc(e) {
+      if (e.key === 'Escape') setPdfModalOpen(false);
+    }
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [pdfModalOpen]);
+
+  useEffect(() => {
+    if (!convoDrawerOpen) return;
+    function onEsc(e) {
+      if (e.key === 'Escape' && !running) setConvoDrawerOpen(false);
+    }
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [convoDrawerOpen, running]);
 
   function autoResize() {
     const ta = textareaRef.current;
@@ -2217,6 +2682,15 @@ function App() {
       if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     };
   }, [roughPrompt, settings.linterEnabled]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) { /* noop */ }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
@@ -2281,7 +2755,7 @@ function App() {
   }
 
   function loadFromHistory(entry) {
-    if (streaming || comparing || abTesting) return;
+    if (streaming || comparing || abTesting || running) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback(entry.feedback || '');
@@ -2304,7 +2778,7 @@ function App() {
   }
 
   function loadFromTemplate(template) {
-    if (streaming || comparing || abTesting) return;
+    if (streaming || comparing || abTesting || running) return;
     setRoughPrompt(template.rough);
     setSubmittedPrompt('');
     setSubmittedFeedback('');
@@ -2316,7 +2790,7 @@ function App() {
   }
 
   function loadFromSaved(entry) {
-    if (streaming || comparing || abTesting) return;
+    if (streaming || comparing || abTesting || running) return;
     setRoughPrompt('');
     setSubmittedPrompt(entry.rough);
     setSubmittedFeedback('');
@@ -2381,7 +2855,15 @@ function App() {
     if (currentSavedId === id) setCurrentSavedId(null);
   }
 
+  // Left rail icon click. The "conversations" item opens the right-side
+  // run drawer; all others toggle the left-side drawer view.
   function toggleView(id) {
+    if (id === 'conversations') {
+      const opening = !convoDrawerOpen;
+      setConvoDrawerOpen(opening);
+      if (opening) setPanelMode('conversation');
+      return;
+    }
     setActiveView(activeView === id ? null : id);
   }
 
@@ -2405,9 +2887,81 @@ function App() {
     setDismissedHints((prev) => [...prev, hintId]);
   }
 
+  function startRecording() {
+    const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) {
+      setVoiceError('Speech recognition not supported in this browser.');
+      return;
+    }
+    if (isRecording) return;
+
+    setVoiceError('');
+    recognitionBaseRef.current = roughPrompt.trim() ? roughPrompt.trimEnd() + ' ' : '';
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let allText = '';
+      for (let i = 0; i < event.results.length; i++) {
+        allText += event.results[i][0].transcript;
+      }
+      setRoughPrompt(recognitionBaseRef.current + allText);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+        setVoiceError('Microphone access denied. Enable it in your browser settings.');
+      } else if (event.error === 'no-speech') {
+        setVoiceError('No speech detected. Try again, closer to the microphone.');
+      } else if (event.error === 'audio-capture') {
+        setVoiceError('No microphone found. Check your audio devices.');
+      } else if (event.error === 'network') {
+        setVoiceError('Speech recognition needs an internet connection.');
+      } else if (event.error === 'aborted') {
+        /* noop */
+      } else {
+        setVoiceError(`Speech recognition error: ${event.error}`);
+      }
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsRecording(true);
+    } catch (err) {
+      console.error(err);
+      setVoiceError('Could not start microphone. Try again.');
+      setIsRecording(false);
+    }
+  }
+
+  function stopRecording() {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) { /* ignore */ }
+    }
+    setIsRecording(false);
+  }
+
+  function toggleRecording() {
+    if (isRecording) stopRecording();
+    else startRecording();
+  }
+
   async function executeRefinement({ feedback = null } = {}) {
     const sourcePrompt = feedback ? submittedPrompt : roughPrompt;
     if (!sourcePrompt.trim() || streaming || comparing) return;
+
+    if (isRecording) stopRecording();
 
     setLoading(true);
     setStreaming(true);
@@ -2551,14 +3105,8 @@ function App() {
     setError('');
 
     const initialColumns = modelIds.map((modelId) => ({
-      modelId,
-      refined: '',
-      changes: [],
-      scores: null,
-      usage: null,
-      latencyMs: null,
-      complete: false,
-      error: null,
+      modelId, refined: '', changes: [], scores: null,
+      usage: null, latencyMs: null, complete: false, error: null,
     }));
     setComparison({ columns: initialColumns });
 
@@ -2577,23 +3125,15 @@ function App() {
     try {
       await streamComparison({
         url: `${API_URL}/api/improve-compare`,
-        body: {
-          prompt: submittedPrompt,
-          category,
-          models: modelIds,
-        },
+        body: { prompt: submittedPrompt, category, models: modelIds },
         signal: controller.signal,
         onStart: () => { /* noop */ },
         onModelChunk: (modelId, text) => {
           const col = workingColumns.find((c) => c.modelId === modelId);
           if (col) updateColumn(modelId, { refined: col.refined + text });
         },
-        onModelChanges: (modelId, modelChanges) => {
-          updateColumn(modelId, { changes: modelChanges });
-        },
-        onModelScores: (modelId, modelScores) => {
-          updateColumn(modelId, { scores: modelScores });
-        },
+        onModelChanges: (modelId, modelChanges) => updateColumn(modelId, { changes: modelChanges }),
+        onModelScores: (modelId, modelScores) => updateColumn(modelId, { scores: modelScores }),
         onModelDone: (modelId, modelUsage, modelLatencyMs) => {
           updateColumn(modelId, {
             complete: true,
@@ -2601,25 +3141,15 @@ function App() {
             latencyMs: modelLatencyMs || null,
           });
           if (modelUsage) {
-            recordUsage({
-              model: modelId,
-              usage: modelUsage,
-              latencyMs: modelLatencyMs,
-              kind: 'comparison',
-            });
+            recordUsage({ model: modelId, usage: modelUsage, latencyMs: modelLatencyMs, kind: 'comparison' });
           }
         },
-        onModelError: (modelId, errMsg) => {
-          updateColumn(modelId, { error: errMsg, complete: true });
-        },
+        onModelError: (modelId, errMsg) => updateColumn(modelId, { error: errMsg, complete: true }),
         onDone: () => {
           setHistory((current) => {
             const updated = [...current];
             if (updated.length > 0) {
-              updated[0] = {
-                ...updated[0],
-                comparison: { columns: workingColumns },
-              };
+              updated[0] = { ...updated[0], comparison: { columns: workingColumns } };
               localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
             }
             return updated;
@@ -2650,13 +3180,13 @@ function App() {
     setCurrentSavedId(null);
   }
 
-  // ── A/B testing ────────────────────────────────────────────
-  // Run the rough prompt and refined prompt through the test model,
-  // streaming both responses in parallel. Each response gets recorded
-  // as a usage event for cost tracking.
+  function closeComparison() {
+    if (compareAbortRef.current) compareAbortRef.current.abort();
+    setComparison(null);
+  }
+
   async function runABTest(mode) {
     if (!improvedPrompt || abTesting) return;
-
     setAbTesting(true);
 
     const initialTest = {
@@ -2667,16 +3197,9 @@ function App() {
     setAbTest(initialTest);
 
     const prompts = [];
-    if (mode === 'both') {
-      prompts.push({ id: 'rough', prompt: submittedPrompt });
-    }
+    if (mode === 'both') prompts.push({ id: 'rough', prompt: submittedPrompt });
     prompts.push({ id: 'refined', prompt: improvedPrompt });
-
-    // If refined-only, mark rough as not-applicable so the UI doesn't show
-    // an empty waiting state for a prompt we never sent.
-    if (mode === 'refined-only') {
-      initialTest.rough = null;
-    }
+    if (mode === 'refined-only') initialTest.rough = null;
 
     const controller = new AbortController();
     testAbortRef.current = controller;
@@ -2684,46 +3207,28 @@ function App() {
     let working = { ...initialTest };
 
     function updateResult(id, updates) {
-      working = {
-        ...working,
-        [id]: { ...(working[id] || {}), ...updates },
-      };
+      working = { ...working, [id]: { ...(working[id] || {}), ...updates } };
       setAbTest(working);
     }
 
     try {
       await streamTest({
         url: `${API_URL}/api/test-prompt`,
-        body: {
-          prompts,
-          model: settings.testModel,
-        },
+        body: { prompts, model: settings.testModel },
         signal: controller.signal,
         onChunk: (id, text) => {
           const current = working[id] || {};
           updateResult(id, { text: (current.text || '') + text });
         },
         onDone: (id, u, latencyMs) => {
-          updateResult(id, {
-            complete: true,
-            usage: u || null,
-            latencyMs: latencyMs || null,
-          });
+          updateResult(id, { complete: true, usage: u || null, latencyMs: latencyMs || null });
           if (u) {
-            recordUsage({
-              model: settings.testModel,
-              usage: u,
-              latencyMs,
-              kind: `test-${id}`,
-            });
+            recordUsage({ model: settings.testModel, usage: u, latencyMs, kind: `test-${id}` });
           }
         },
         onError: (id, errMsg) => {
-          if (id) {
-            updateResult(id, { complete: true, error: errMsg });
-          } else {
-            console.error('Test stream error:', errMsg);
-          }
+          if (id) updateResult(id, { complete: true, error: errMsg });
+          else console.error('Test stream error:', errMsg);
         },
         onComplete: () => { /* noop */ },
       });
@@ -2739,26 +3244,235 @@ function App() {
   }
 
   function closeABTest() {
-    // If test is in flight, abort it
-    if (testAbortRef.current) {
-      testAbortRef.current.abort();
-    }
+    if (testAbortRef.current) testAbortRef.current.abort();
     setAbTestOpen(false);
-    setAbTest(null);
   }
 
   function openABTest() {
     setAbTestOpen(true);
-    setAbTest(null);
+    if (!abTest) setAbTest(null);
   }
 
-  function handleImprove() {
-    runRefinement();
+  /* ── Conversation lifecycle ──────────────────────────────── */
+
+  // Archive the current conversation into the conversations list.
+  function archiveCurrent(workingConvo) {
+    if (!workingConvo || !workingConvo.messages?.length) return conversations;
+    const toArchive = { ...workingConvo, lastUsedAt: Date.now() };
+    const withoutDupe = conversations.filter((c) => c.id !== toArchive.id);
+    const next = [toArchive, ...withoutDupe].slice(0, MAX_CONVERSATIONS);
+    setConversations(next);
+    return next;
   }
 
-  function handleFollowUp(feedback) {
-    runRefinement({ feedback });
+  function openRunDrawerWithRefined() {
+    if (!improvedPrompt || !refinedComplete) return;
+
+    archiveCurrent(currentConvo);
+
+    const initialUserMsg = {
+      id: makeId(),
+      role: 'user',
+      content: improvedPrompt,
+      timestamp: Date.now(),
+    };
+    const newConvo = {
+      id: makeId(),
+      title: '',
+      startedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      model: settings.testModel,
+      messages: [initialUserMsg],
+    };
+    setCurrentConvo(newConvo);
+    setConvoDrawerOpen(true);
+    setPanelMode('conversation');
+    runAssistantTurn(newConvo);
   }
+
+  function startNewRunConversation() {
+    if (running) return;
+    archiveCurrent(currentConvo);
+    setCurrentConvo(null);
+    setPanelMode('conversation');
+  }
+
+  function sendRunMessage(text) {
+    if (!text.trim() || running) return;
+
+    const userMsg = {
+      id: makeId(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+
+    let workingConvo;
+    if (!currentConvo) {
+      workingConvo = {
+        id: makeId(),
+        title: '',
+        startedAt: Date.now(),
+        lastUsedAt: Date.now(),
+        model: settings.testModel,
+        messages: [userMsg],
+      };
+    } else {
+      workingConvo = {
+        ...currentConvo,
+        lastUsedAt: Date.now(),
+        messages: [...(currentConvo.messages || []), userMsg],
+      };
+    }
+    setCurrentConvo(workingConvo);
+    runAssistantTurn(workingConvo);
+  }
+
+  async function runAssistantTurn(convo) {
+    if (running) return;
+    setRunning(true);
+
+    const assistantMsg = {
+      id: makeId(),
+      role: 'assistant',
+      content: '',
+      model: settings.testModel,
+      streaming: true,
+      complete: false,
+      timestamp: Date.now(),
+    };
+
+    let workingConvo = {
+      ...convo,
+      messages: [...convo.messages, assistantMsg],
+    };
+    setCurrentConvo(workingConvo);
+
+    const controller = new AbortController();
+    runAbortRef.current = controller;
+
+    const apiMessages = convo.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .filter((m) => m.content && m.content.trim() !== '')
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    let accumulated = '';
+    let finalUsage = null;
+    let finalLatency = null;
+    let receivedError = null;
+
+    try {
+      await streamRunPrompt({
+        url: `${API_URL}/api/run-prompt`,
+        body: { messages: apiMessages, model: settings.testModel },
+        signal: controller.signal,
+        onChunk: (text) => {
+          accumulated += text;
+          workingConvo = {
+            ...workingConvo,
+            messages: workingConvo.messages.map((m) =>
+              m.id === assistantMsg.id ? { ...m, content: accumulated } : m
+            ),
+          };
+          setCurrentConvo(workingConvo);
+        },
+        onDone: (payload) => {
+          if (payload?.usage) finalUsage = payload.usage;
+          if (payload?.latencyMs) finalLatency = payload.latencyMs;
+        },
+        onError: (msg) => { receivedError = msg; },
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Run-prompt error:', err);
+        receivedError = err.message || 'Run failed.';
+      }
+    } finally {
+      const cost = finalUsage ? computeCost(settings.testModel, finalUsage) : null;
+      const firstUserMsg = workingConvo.messages.find((m) => m.role === 'user');
+      const generatedTitle = workingConvo.title || autoTitle(firstUserMsg?.content || '');
+
+      workingConvo = {
+        ...workingConvo,
+        title: generatedTitle,
+        lastUsedAt: Date.now(),
+        messages: workingConvo.messages.map((m) => {
+          if (m.id !== assistantMsg.id) return m;
+          return {
+            ...m,
+            content: accumulated,
+            streaming: false,
+            complete: true,
+            error: receivedError || null,
+            usage: finalUsage,
+            latencyMs: finalLatency,
+            cost,
+          };
+        }),
+      };
+      setCurrentConvo(workingConvo);
+
+      if (finalUsage) {
+        recordUsage({ model: settings.testModel, usage: finalUsage, latencyMs: finalLatency, kind: 'run' });
+      }
+
+      setRunning(false);
+      runAbortRef.current = null;
+    }
+  }
+
+  function stopRun() {
+    if (runAbortRef.current) runAbortRef.current.abort();
+  }
+
+  function loadConversation(convo) {
+    if (running) return;
+    if (currentConvo && currentConvo.id !== convo.id && currentConvo.messages?.length > 0) {
+      archiveCurrent(currentConvo);
+    }
+    setConversations(conversations.filter((c) => c.id !== convo.id));
+    setCurrentConvo({ ...convo, lastUsedAt: Date.now() });
+    setPanelMode('conversation');
+  }
+
+  function renameConversation(id, newTitle) {
+    if (!newTitle?.trim()) return;
+    if (currentConvo?.id === id) {
+      setCurrentConvo({ ...currentConvo, title: newTitle });
+    } else {
+      setConversations(conversations.map((c) =>
+        c.id === id ? { ...c, title: newTitle } : c
+      ));
+    }
+  }
+
+  function removeConversation(id) {
+    if (!confirm('Delete this conversation? This cannot be undone.')) return;
+    if (currentConvo?.id === id) {
+      setCurrentConvo(null);
+    } else {
+      setConversations(conversations.filter((c) => c.id !== id));
+    }
+  }
+
+  function clearAllConversations() {
+    if (conversations.length === 0) return;
+    if (!confirm(`Delete all ${conversations.length} past conversations? This cannot be undone. (Your current conversation will be kept.)`)) return;
+    setConversations([]);
+  }
+
+  function showConversationList() {
+    setPanelMode('list');
+  }
+
+  function showCurrentConversation() {
+    setPanelMode('conversation');
+  }
+
+  /* ── Other handlers ──────────────────────────────────────── */
+
+  function handleImprove() { runRefinement(); }
+  function handleFollowUp(feedback) { runRefinement({ feedback }); }
 
   function handleStop() {
     if (abortRef.current) abortRef.current.abort();
@@ -2779,6 +3493,9 @@ function App() {
     }
   }
 
+  function openPDFExport() { setPdfModalOpen(true); }
+  function closePDFExport() { setPdfModalOpen(false); }
+
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
@@ -2786,12 +3503,23 @@ function App() {
   const isRefinementInProgress = Boolean(submittedPrompt) && !error && !comparing;
   const showChangesSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && changes.length === 0;
   const showScoresSkeleton = isRefinementInProgress && Boolean(improvedPrompt) && !scores;
-  const showFollowUp = Boolean(improvedPrompt) && refinedComplete && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
-  const showCompareInvite = Boolean(improvedPrompt) && refinedComplete && !comparison && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
-  const showABTestInvite = Boolean(improvedPrompt) && refinedComplete && !comparing && !abTestOpen && changes.length > 0 && scores !== null;
+
+  const refinementReady = Boolean(improvedPrompt) && refinedComplete && !busy && changes.length > 0 && scores !== null;
+  const showFollowUp = refinementReady && !abTestOpen;
+  const showCompareInvite = refinementReady && !comparison;
+  const showABTestInvite = refinementReady && !abTestOpen;
+
+  const hasABTestResults = Boolean(abTest && (abTest.rough?.complete || abTest.refined?.complete));
+
   const showLintHints = settings.linterEnabled && !busy && lintHints.length > 0;
+  const showMicButton = speechSupported && settings.voiceEnabled;
+  const canExportPDF = Boolean(improvedPrompt) && refinedComplete && !busy && changes.length > 0 && scores !== null;
+  const canRunPrompt = refinementReady;
 
   const primaryCost = primaryUsage ? computeCost(primaryModel, primaryUsage) : null;
+
+  // Badge on the Conversations rail icon if a run is streaming and the drawer is closed.
+  const showConversationsBadge = running && !convoDrawerOpen;
 
   return (
     <div className="shell">
@@ -2807,16 +3535,20 @@ function App() {
           </span>
         </button>
         <div className="rail-divider" />
-        {RAIL_ITEMS.map((item) => {
+        {LEFT_RAIL_ITEMS.map((item) => {
           const Icon = item.icon;
+          const isConversationsItem = item.id === 'conversations';
+          const isActive = isConversationsItem ? convoDrawerOpen : activeView === item.id;
+          const showBadge = isConversationsItem && showConversationsBadge;
           return (
             <button
               key={item.id}
-              className={`rail-btn ${activeView === item.id ? 'active' : ''}`}
+              className={`rail-btn ${isActive ? 'active' : ''}`}
               onClick={() => toggleView(item.id)}
               aria-label={item.label}
             >
               <Icon />
+              {showBadge && <span className="rail-btn-badge" />}
               <span className="rail-tooltip">{item.label}</span>
             </button>
           );
@@ -2843,15 +3575,16 @@ function App() {
               onRemove={removeSaved}
             />
           )}
-          {activeView === 'templates' && (
-            <TemplatesView onSelect={loadFromTemplate} />
-          )}
-          {activeView === 'usage' && (
-            <UsageView usage={usage} onClear={clearUsage} />
-          )}
+          {activeView === 'templates' && <TemplatesView onSelect={loadFromTemplate} />}
+          {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
           {activeView === 'help' && <HelpView />}
           {activeView === 'settings' && (
-            <SettingsView settings={settings} onChange={updateSettings} onReset={resetSettings} />
+            <SettingsView
+              settings={settings}
+              onChange={updateSettings}
+              onReset={resetSettings}
+              speechSupported={speechSupported}
+            />
           )}
         </div>
       </aside>
@@ -2867,19 +3600,11 @@ function App() {
             )}
 
             {submittedPrompt && (
-              <RoughPromptMessage
-                text={submittedPrompt}
-                category={category}
-                isFollowUp={false}
-              />
+              <RoughPromptMessage text={submittedPrompt} category={category} isFollowUp={false} />
             )}
 
             {submittedFeedback && (
-              <RoughPromptMessage
-                text={submittedFeedback}
-                category={null}
-                isFollowUp={true}
-              />
+              <RoughPromptMessage text={submittedFeedback} category={null} isFollowUp={true} />
             )}
 
             {loading && !improvedPrompt && (
@@ -2927,10 +3652,24 @@ function App() {
                       <StarIcon filled={isSaved} />
                     </button>
                     <button
-                      className="copy-btn"
-                      onClick={handleCopy}
-                      disabled={busy}
+                      className="icon-action primary-action"
+                      onClick={openRunDrawerWithRefined}
+                      disabled={!canRunPrompt}
+                      aria-label="Run prompt"
+                      title="Run this refined prompt and chat with the model"
                     >
+                      <PlayCircleIcon />
+                    </button>
+                    <button
+                      className="icon-action"
+                      onClick={openPDFExport}
+                      disabled={!canExportPDF}
+                      aria-label="Export to PDF"
+                      title="Export to PDF"
+                    >
+                      <PDFIcon />
+                    </button>
+                    <button className="copy-btn" onClick={handleCopy} disabled={busy}>
                       {copied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
@@ -2946,13 +3685,10 @@ function App() {
             {changes.length > 0 && <ChangesPanel changes={changes} />}
 
             {showScoresSkeleton && <ScoresSkeleton />}
-            {scores && <ScoresPanel scores={scores} />}
+            {scores && <ScoresPanel scores={scores} chartContainerRef={scoresChartRef} />}
 
             {showABTestInvite && (
-              <ABTestInvite
-                disabled={busy}
-                onOpen={openABTest}
-              />
+              <ABTestInvite disabled={busy} onOpen={openABTest} hasResults={hasABTestResults} />
             )}
 
             {abTestOpen && (
@@ -2968,11 +3704,7 @@ function App() {
             )}
 
             {showCompareInvite && (
-              <CompareInvite
-                primaryModel={primaryModel}
-                onCompare={runComparison}
-                disabled={busy}
-              />
+              <CompareInvite primaryModel={primaryModel} onCompare={runComparison} disabled={busy} />
             )}
 
             {(comparison || comparing) && (
@@ -2985,15 +3717,12 @@ function App() {
                 primaryUsage={primaryUsage}
                 primaryLatencyMs={primaryLatencyMs}
                 onUseVersion={useComparisonVersion}
+                onClose={closeComparison}
+                busy={busy}
               />
             )}
 
-            {showFollowUp && (
-              <FollowUpPanel
-                disabled={busy}
-                onSubmit={handleFollowUp}
-              />
-            )}
+            {showFollowUp && <FollowUpPanel disabled={busy} onSubmit={handleFollowUp} />}
 
             {error && (
               <div className="message">
@@ -3004,7 +3733,7 @@ function App() {
         </div>
 
         <div className="composer-wrap">
-          <div className="composer">
+          <div className={`composer ${isRecording ? 'recording' : ''}`}>
             <div className="composer-chips">
               {CATEGORIES.map((c) => (
                 <button
@@ -3024,36 +3753,58 @@ function App() {
               value={roughPrompt}
               onChange={(e) => setRoughPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={submittedPrompt ? "Type another rough prompt..." : "Type a rough prompt... (Cmd+Enter to submit)"}
+              placeholder={
+                isRecording
+                  ? 'Listening — speak now…'
+                  : submittedPrompt
+                  ? 'Type another rough prompt...'
+                  : 'Type a rough prompt... (Cmd+Enter to submit)'
+              }
               rows={1}
               disabled={busy}
             />
 
             <div className="composer-actions">
               <span className="char-count">
-                {roughPrompt.length > 0 && `${roughPrompt.length} characters`}
+                {isRecording && <span className="recording-indicator"><span className="recording-dot" /> Recording</span>}
+                {!isRecording && roughPrompt.length > 0 && `${roughPrompt.length} characters`}
               </span>
-              {busy ? (
-                <button
-                  className="send-btn stop"
-                  onClick={handleStop}
-                  aria-label="Stop generating"
-                  title="Stop generating"
-                >
-                  <span className="stop-square" />
-                </button>
-              ) : (
-                <button
-                  className="send-btn"
-                  onClick={handleImprove}
-                  disabled={loading || !roughPrompt.trim()}
-                  aria-label="Refine prompt"
-                >
-                  <SendIcon />
-                </button>
-              )}
+              <div className="composer-buttons">
+                {showMicButton && !busy && (
+                  <button
+                    type="button"
+                    className={`mic-btn ${isRecording ? 'recording' : ''}`}
+                    onClick={toggleRecording}
+                    aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                    title={isRecording ? 'Stop recording' : 'Dictate prompt'}
+                  >
+                    {isRecording ? <MicOffIcon /> : <MicIcon />}
+                  </button>
+                )}
+                {busy ? (
+                  <button
+                    className="send-btn stop"
+                    onClick={handleStop}
+                    aria-label="Stop generating"
+                    title="Stop generating"
+                  >
+                    <span className="stop-square" />
+                  </button>
+                ) : (
+                  <button
+                    className="send-btn"
+                    onClick={handleImprove}
+                    disabled={loading || !roughPrompt.trim()}
+                    aria-label="Refine prompt"
+                  >
+                    <SendIcon />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+
+          {voiceError && <div className="voice-error">{voiceError}</div>}
 
           {showLintHints && (
             <LintHintsPanel
@@ -3079,6 +3830,45 @@ function App() {
           findings={piiFindings}
           onContinue={handlePIIContinue}
           onCancel={handlePIICancel}
+        />
+      )}
+
+      {pdfModalOpen && (
+        <PDFPreviewModal
+          roughPrompt={submittedPrompt}
+          category={category}
+          refinedPrompt={improvedPrompt}
+          changes={changes}
+          scores={scores}
+          primaryModel={primaryModel}
+          primaryUsage={primaryUsage}
+          primaryLatencyMs={primaryLatencyMs}
+          abTest={abTest}
+          testModel={settings.testModel}
+          comparison={comparison}
+          scoresChartRef={scoresChartRef}
+          onClose={closePDFExport}
+        />
+      )}
+
+      {convoDrawerOpen && (
+        <RunDrawer
+          panelMode={panelMode}
+          conversation={currentConvo}
+          conversations={conversations}
+          testModel={settings.testModel}
+          modelShortName={modelShortName}
+          onClose={() => setConvoDrawerOpen(false)}
+          onSend={sendRunMessage}
+          onStop={stopRun}
+          onNewConversation={startNewRunConversation}
+          onShowList={showConversationList}
+          onShowConversation={showCurrentConversation}
+          onLoadConversation={loadConversation}
+          onRenameConversation={renameConversation}
+          onRemoveConversation={removeConversation}
+          onClearAllConversations={clearAllConversations}
+          busy={running}
         />
       )}
     </div>

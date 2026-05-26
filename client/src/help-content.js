@@ -1,561 +1,243 @@
-// Help & Documentation content.
-// Rendered inside the 300px sidebar drawer, so keep blocks narrow and short.
-// Block types:
-//   { type: 'text', text }
-//   { type: 'step', n, title, text }
-//   { type: 'list', items: [{ label, text }] }
-//   { type: 'note', text }
-// Audience: someone returning to the app after a break who needs to remember
-// what something does. Not a tutorial for strangers, not a dev reference.
-
 export const HELP_CONTENT = [
   {
     id: 'getting-started',
     title: 'Getting started',
     body: [
-      {
-        type: 'text',
-        text: 'Prompt Refinery turns rough, half-formed prompts into well-structured ones. You type a rough idea, it produces a refined version, explains what changed, and scores both.',
-      },
-      {
-        type: 'step',
-        n: 1,
-        title: 'Type a rough prompt',
-        text: 'Whatever you would have sent to ChatGPT, Claude, or Gemini if you were in a hurry. No need to be polished — that is the whole point.',
-      },
-      {
-        type: 'step',
-        n: 2,
-        title: 'Pick a category (optional)',
-        text: 'General, Writing, Code, Analysis, or Brainstorm. The refiner adjusts its instructions based on which you pick.',
-      },
-      {
-        type: 'step',
-        n: 3,
-        title: 'Hit Refine (or Cmd+Enter)',
-        text: 'The refined version streams in. Below it: what changed, quality scores for both versions, and an estimated cost.',
-      },
-      {
-        type: 'step',
-        n: 4,
-        title: 'Copy and use',
-        text: 'Click Copy. Paste into the AI tool of your choice. The refined prompt is what you actually wanted to send all along.',
-      },
-      {
-        type: 'note',
-        text: 'Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux) sends from anywhere in the composer.',
-      },
+      { type: 'text', text: 'Prompt Refinery turns rough, vague prompts into well-structured ones that work better with AI models. The workflow is straightforward: type a rough idea, pick a category, submit, and review what changed.' },
+      { type: 'step', n: 1, title: 'Type a rough prompt', text: 'Use the composer at the bottom. Don\'t worry about being polished — that\'s the point. "Help me write an email to my landlord" is a fine starting place.' },
+      { type: 'step', n: 2, title: 'Pick a category', text: 'General, Writing, Code, Analysis, or Brainstorm. The category guides the refinement style.' },
+      { type: 'step', n: 3, title: 'Submit', text: 'Click the send button, or press Cmd+Enter (Ctrl+Enter on Windows/Linux). You\'ll see the refined prompt stream in, followed by a list of what changed and a quality score.' },
+      { type: 'step', n: 4, title: 'Iterate', text: 'Use the follow-up panel underneath to refine further — "make it shorter," "add examples," or whatever you need. Or copy the refined prompt and use it directly in your AI tool of choice.' },
+      { type: 'note', text: 'All your refinements are saved locally in your browser. Nothing leaves your machine except the API call to Anthropic to actually refine the prompt.' },
     ],
   },
-
   {
-    id: 'refinement-flow',
-    title: 'How refinement works',
+    id: 'composer',
+    title: 'The composer',
     body: [
-      {
-        type: 'text',
-        text: 'When you refine a prompt, three things happen at once: the refined version is generated, a list of changes is produced, and both versions are scored against five quality dimensions.',
-      },
+      { type: 'text', text: 'The composer is where you type rough prompts. A few things to know:' },
       {
         type: 'list',
         items: [
-          {
-            label: 'Refined prompt',
-            text: 'Streams in word by word. You can stop it mid-stream if it goes the wrong direction.',
-          },
-          {
-            label: 'What changed',
-            text: 'A numbered list of the most impactful edits the refiner made, each with a short explanation.',
-          },
-          {
-            label: 'Quality score',
-            text: 'Two radar charts — your rough prompt vs the refined version — plus a per-dimension breakdown with rationales.',
-          },
-          {
-            label: 'Refine further',
-            text: 'Four preset adjustments (Shorter / More formal / Simpler / Add examples) or a free-form follow-up box for anything else.',
-          },
-        ],
-      },
-      {
-        type: 'note',
-        text: 'A follow-up is a new refinement using your previous refined version plus your feedback. It runs a fresh API call and shows up as a "follow-up" entry in history.',
-      },
-    ],
-  },
-
-  {
-    id: 'quality-score',
-    title: 'Quality score',
-    body: [
-      {
-        type: 'text',
-        text: 'Every refinement is scored against five dimensions on a 1-5 scale. The radar charts show your rough prompt (gray) and refined version (orange) so you can see exactly where the lift came from.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Specificity',
-            text: 'How concrete and detailed is the request? Named entities, quantities, context.',
-          },
-          {
-            label: 'Audience',
-            text: 'Who is the response for? Their expertise level, role, context.',
-          },
-          {
-            label: 'Format',
-            text: 'Is the desired output shape stated? Email, list, paragraph, code, table, etc.',
-          },
-          {
-            label: 'Constraints',
-            text: 'Limits, exclusions, edge cases, things to avoid.',
-          },
-          {
-            label: 'Examples',
-            text: 'Concrete examples of good output, or instructions to think step-by-step.',
-          },
-        ],
-      },
-      {
-        type: 'note',
-        text: 'The same five dimensions are used by the linter (live hints) and the refiner (final scoring). Learning them once helps everywhere.',
-      },
-    ],
-  },
-
-  {
-    id: 'linter',
-    title: 'Prompt linter',
-    body: [
-      {
-        type: 'text',
-        text: 'As you type a rough prompt, the linter runs in your browser and surfaces hints about what might be missing. No API call, no cost — just instant feedback.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Critical',
-            text: 'Red dot. Prompt is too short or too vague to refine well. Address before sending.',
-          },
-          {
-            label: 'Warning',
-            text: 'Amber dot. An important dimension (audience, format) is missing in a prompt long enough that it should have one.',
-          },
-          {
-            label: 'Info',
-            text: 'Gray dot. A nice-to-have addition, but the prompt is usable.',
-          },
-        ],
-      },
-      {
-        type: 'text',
-        text: 'Hints update 400ms after you stop typing. They disappear as you address them. You can also dismiss any hint with the × button — but it comes back if you edit the prompt further, which is intentional.',
-      },
-      {
-        type: 'note',
-        text: 'Toggle the linter off in Settings if you find it noisy. The refiner still works without it.',
-      },
-    ],
-  },
-
-  {
-    id: 'pii-scanner',
-    title: 'PII scanner',
-    body: [
-      {
-        type: 'text',
-        text: 'When you click Refine, your prompt is scanned locally for things you probably did not mean to send to an AI service — API keys, credit cards, phone numbers, emails, addresses. If anything is found, a warning modal appears before the prompt leaves your browser.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'API keys & secrets',
-            text: 'OpenAI, Anthropic, GitHub, Slack, AWS-shaped keys. Flagged as critical — almost never intentional.',
-          },
-          {
-            label: 'Financial info',
-            text: 'Credit card numbers (Luhn-validated to cut false positives), US SSNs, IBANs. Critical.',
-          },
-          {
-            label: 'Contact info',
-            text: 'Email addresses, phone numbers (international and US), street addresses. Warning — often intentional.',
-          },
-        ],
-      },
-      {
-        type: 'text',
-        text: 'You always have two options: Edit prompt (returns you to the composer with the prompt preserved) or Send anyway / Send as-is. The button color changes based on severity — yellow for critical findings, orange for warnings.',
-      },
-      {
-        type: 'note',
-        text: 'The scanner runs entirely in your browser. Nothing flagged is sent unless you confirm. Toggle it off in Settings if it nags you on legitimate content.',
-      },
-    ],
-  },
-
-  {
-    id: 'cost-tracking',
-    title: 'Cost & latency',
-    body: [
-      {
-        type: 'text',
-        text: 'Every refinement and comparison column shows its estimated cost and how long it took, right next to the model badge. Click the Usage icon in the rail (bar chart) to see aggregate stats.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Per-refinement tags',
-            text: 'Cost and latency appear inline. Sub-cent costs show 4 decimals so you can actually see them.',
-          },
-          {
-            label: 'Today / 7 days / 30 days',
-            text: 'Three rolling totals at the top of the Usage panel.',
-          },
-          {
-            label: '7-day bar chart',
-            text: 'Quick visual of where your spending sat each day.',
-          },
-          {
-            label: 'By model',
-            text: 'Which models cost what — useful when deciding if Opus is worth it for the next refinement.',
-          },
-          {
-            label: 'Average latency',
-            text: 'How long refinements typically take. Opus is usually 2-3x slower than Sonnet.',
-          },
-        ],
-      },
-      {
-        type: 'note',
-        text: 'Costs are estimates based on Anthropic\'s published per-token rates. Your Anthropic Console is the source of truth for actual billing — these usually match closely but rounding can differ.',
-      },
-    ],
-  },
-
-  {
-    id: 'saved-prompts',
-    title: 'Saved prompts',
-    body: [
-      {
-        type: 'text',
-        text: 'Click the star icon next to a refined prompt to keep it permanently. Saved prompts live in their own sidebar view and survive forever, unlike history which only keeps the last 20.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Rename',
-            text: 'Hover a saved prompt and click the pencil icon to give it a memorable name.',
-          },
-          {
-            label: 'Remove',
-            text: 'Hover and click the trash icon. Confirms before deleting.',
-          },
-          {
-            label: 'Load',
-            text: 'Click a saved prompt to load it into the main view, exactly as it was when you saved it — scores, changes, even comparison columns.',
-          },
+          { label: 'Categories', text: 'The chip row above the textarea changes how the refinement is approached. Pick the one that best fits your task.' },
+          { label: 'Cmd+Enter to submit', text: 'Faster than reaching for the mouse. Works from anywhere inside the textarea.' },
+          { label: 'Auto-resize', text: 'The textarea grows as you type, up to about 200px tall, then scrolls.' },
+          { label: 'Character count', text: 'Shows at the bottom-left once you start typing. There\'s no hard limit, but if you\'re past ~2000 characters, you might want to break your prompt into smaller pieces.' },
+          { label: 'Stop button', text: 'During streaming, the send button turns into a stop button. Click it to abort the current refinement.' },
         ],
       },
     ],
   },
-
   {
     id: 'templates',
     title: 'Templates',
     body: [
-      {
-        type: 'text',
-        text: 'Pre-written starter prompts for common scenarios — email drafts, code review, summaries, brainstorms. Open the Templates view in the sidebar and click one to load it into the composer.',
-      },
-      {
-        type: 'text',
-        text: 'Templates are starting points, not finished prompts. Edit them, add your specific context, then refine.',
-      },
+      { type: 'text', text: 'Templates are starter prompts for common scenarios — email drafts, code reviews, brainstorming sessions, and so on. Open the Templates panel from the sidebar.' },
+      { type: 'text', text: 'Clicking a template fills the composer with the starter text and selects the right category. From there, you can edit it before submitting, or submit as-is.' },
+      { type: 'note', text: 'Templates are a starting point, not a finished product. Treat them as rough prompts — they\'re meant to be refined further.' },
     ],
   },
-
   {
-    id: 'history',
-    title: 'History',
+    id: 'what-changed',
+    title: 'The "What changed" panel',
     body: [
-      {
-        type: 'text',
-        text: 'Your last 20 refinements, automatically saved. Click any entry to load it back into the main view.',
-      },
+      { type: 'text', text: 'After every refinement, you\'ll see a numbered list of changes the refiner made to your rough prompt. This is the teaching layer — over time, reading these changes helps you write better rough prompts.' },
+      { type: 'text', text: 'Each change includes a title (the type of change) and an explanation (what specifically was done and why). Common change types include adding specificity, clarifying the audience, specifying output format, adding constraints, and requesting examples.' },
+    ],
+  },
+  {
+    id: 'quality-score',
+    title: 'Quality score',
+    body: [
+      { type: 'text', text: 'Every refinement is scored on five dimensions, before and after. The two radar charts show the shape of the rough prompt versus the refined one — bigger area = better prompt.' },
       {
         type: 'list',
         items: [
-          {
-            label: 'follow-up tag',
-            text: 'Appears on entries that were follow-up refinements (used your previous refined version as input).',
-          },
-          {
-            label: 'compare tag',
-            text: 'Appears on entries that have a cross-model comparison attached.',
-          },
-          {
-            label: 'imported tag',
-            text: 'Appears on entries that came from an Export/Import roundtrip.',
-          },
+          { label: 'Specificity', text: 'How concrete and detailed the request is.' },
+          { label: 'Audience', text: 'Whether the intended reader / recipient is clear.' },
+          { label: 'Format', text: 'Whether the desired output format is specified.' },
+          { label: 'Constraints', text: 'What limits, exclusions, or requirements are stated.' },
+          { label: 'Examples', text: 'Whether examples are provided or step-by-step reasoning is requested.' },
         ],
       },
-      {
-        type: 'note',
-        text: 'When you hit 20 entries, the oldest rolls off. Star anything you want to keep before that happens.',
-      },
+      { type: 'text', text: 'The "lift" number (green pill) shows how many points the refinement gained on average. A lift of 1.5+ usually means the refiner found genuine improvements. A lift below 0.5 might mean your rough prompt was already pretty good.' },
+      { type: 'note', text: 'The scores come from Claude itself, so they\'re not perfectly objective. Treat them as a rough signal, not a verdict. The teaching value is in the rationale text, not the numbers.' },
     ],
   },
-
+  {
+    id: 'follow-ups',
+    title: 'Follow-up refinement',
+    body: [
+      { type: 'text', text: 'After a refinement completes, a follow-up panel appears. Use it to iterate further on the same refined prompt — without losing the work you\'ve done.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Preset chips', text: 'Shorter, More formal, Simpler, Add examples — common refinements you\'ll want often.' },
+          { label: 'Free-form input', text: 'Type any feedback in your own words. "Less casual." "Add a deadline." "Make the tone match the recipient."' },
+        ],
+      },
+      { type: 'text', text: 'The follow-up replaces the current refined prompt with a new version that incorporates your feedback. Use the History panel to go back to a previous version if needed.' },
+    ],
+  },
+  {
+    id: 'history-and-saved',
+    title: 'History & Saved prompts',
+    body: [
+      { type: 'text', text: 'Every refinement is automatically added to History (rolling 20). To keep a prompt permanently, click the star button on its message header — it moves to Saved.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'History', text: 'Recent refinements. Click any entry to reload it. Auto-trims to the 20 most recent.' },
+          { label: 'Saved', text: 'Permanent collection. No item limit. Each saved prompt can be renamed (pencil icon) or removed (trash icon).' },
+        ],
+      },
+      { type: 'text', text: 'Both are stored in your browser\'s localStorage. They survive page refreshes, but not browser data clears. Use Export to back them up.' },
+    ],
+  },
+  {
+    id: 'compare-models',
+    title: 'Compare models',
+    body: [
+      { type: 'text', text: 'After a refinement completes, you\'ll see a "Compare with other models" button. Click it to pick up to 3 additional models — your rough prompt gets refined in parallel by each, and you can see the results side by side.' },
+      { type: 'text', text: 'Each comparison column shows the refined prompt, the score, the cost, and the latency for that model. Click "Use this version" to swap the comparison result into your main view.' },
+      { type: 'note', text: 'Comparison costs add up — each additional model is a separate API call. Glance at the Usage panel after a comparison run to see the impact.' },
+    ],
+  },
+  {
+    id: 'ab-testing',
+    title: 'A/B Testing',
+    body: [
+      { type: 'text', text: 'Refinement helps your prompt score better, but does it produce better output? A/B Testing answers that. After a refinement, click "Test this refined prompt (A/B vs rough)" to run both the rough and refined versions through a model and see the results side by side.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Run both mode', text: 'Sends the rough prompt and the refined prompt to the test model in parallel. Two columns, two outputs. Compare quality directly.' },
+          { label: 'Refined only mode', text: 'Just the refined prompt. Useful when you only want to see what your prompt produces, without paying for two calls.' },
+          { label: 'Test runner model', text: 'Set in Settings, independent of the refinement model. Match it to the task complexity — Haiku for simple, Opus for complex.' },
+        ],
+      },
+      { type: 'note', text: 'Each test is a real API call with real cost. Use it on prompts where the answer matters — not every refinement needs to be tested.' },
+    ],
+  },
+  {
+    id: 'voice-input',
+    title: 'Voice input',
+    body: [
+      { type: 'text', text: 'Dictate rough prompts using your microphone instead of typing. The mic button appears next to the send button when voice input is enabled in Settings and your browser supports speech recognition.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Click to start', text: 'Click the mic. First time, your browser will ask for microphone permission. The mic turns red while listening.' },
+          { label: 'Speak naturally', text: 'Words appear in the composer as you speak. Don\'t worry about punctuation — the refiner cleans it up.' },
+          { label: 'Click to stop', text: 'Click the mic again to stop. Whatever was transcribed stays in the composer and you can edit or submit it normally.' },
+          { label: 'Append mode', text: 'If you already have text typed, voice transcription is appended (with a space). It doesn\'t overwrite what you typed.' },
+        ],
+      },
+      { type: 'note', text: 'Honest disclosure: on Chrome, speech recognition routes through Google\'s servers. On Safari, it stays on-device. Firefox doesn\'t support it. If privacy matters to you, use Safari or disable voice input in Settings.' },
+    ],
+  },
+  {
+    id: 'prompt-linter',
+    title: 'Prompt linter',
+    body: [
+      { type: 'text', text: 'The linter runs locally in your browser as you type, flagging common issues in rough prompts before you submit. Hints appear in a panel below the composer.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Critical hints (red)', text: 'Things that almost always hurt prompt quality — like being too vague, or asking for an opinion without context.' },
+          { label: 'Warning hints (gold)', text: 'Things to consider — like missing audience information, or no specified format.' },
+          { label: 'Info hints (gray)', text: 'Gentle suggestions — like adding examples or asking for step-by-step reasoning.' },
+          { label: 'Dismiss button', text: 'Each hint has an × button. Dismissed hints don\'t come back until you change your prompt.' },
+        ],
+      },
+      { type: 'text', text: 'The linter runs about 400ms after you stop typing — it\'s debounced so it doesn\'t flicker on every keystroke. Toggle it off entirely in Settings if you find it distracting.' },
+      { type: 'note', text: 'The linter is heuristic, not exhaustive. It catches obvious issues but doesn\'t guarantee a good prompt. The real check is the quality score after refinement.' },
+    ],
+  },
+  {
+    id: 'pii-scanner',
+    title: 'PII scanner',
+    body: [
+      { type: 'text', text: 'Before each prompt is sent to the AI, your browser scans it for sensitive-looking content. If anything is found, a warning modal appears so you can review and decide whether to send anyway.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Credentials (critical)', text: 'API keys, access tokens, private keys, anything that looks like a secret. These should almost never be in a prompt — the warning is strong.' },
+          { label: 'Financial (critical)', text: 'Credit card numbers (Luhn-validated, so false positives are rare). Bank account numbers and similar.' },
+          { label: 'Contact (warning)', text: 'Email addresses, phone numbers. Often intentional ("draft a reply to john@example.com") but flagged so you can confirm.' },
+        ],
+      },
+      { type: 'text', text: 'The scanner runs entirely in your browser before any network request. Nothing is sent until you click "Send anyway" or "Send as-is." You can disable the scanner in Settings if you find it annoying for your use case.' },
+      { type: 'note', text: 'The scanner uses regex patterns and a Luhn check for cards. It catches the common cases but isn\'t bulletproof — it won\'t catch a credit card written as "four-eight-zero-zero..." or a key obfuscated with spaces. Treat it as a first line of defense, not a guarantee.' },
+    ],
+  },
   {
     id: 'export-import',
-    title: 'Export / Import',
+    title: 'Export & Import',
     body: [
-      {
-        type: 'text',
-        text: 'In the History view, click "Export / Import" to back up or restore your prompts. Three formats are supported.',
-      },
+      { type: 'text', text: 'Open the Export/Import dialog from the History panel header. You can save a copy of all your history and saved prompts to a file, or load prompts from a previously exported file.' },
       {
         type: 'list',
         items: [
-          {
-            label: 'Markdown (.md)',
-            text: 'Human-readable. Best for reviewing your prompts or sharing them. Includes refined text, changes, and scores in prose form.',
-          },
-          {
-            label: 'JSON (.json)',
-            text: 'Lossless. Best for re-importing later — every field is preserved including comparison columns and score rationales.',
-          },
-          {
-            label: 'CSV (.csv)',
-            text: 'Flat spreadsheet format. Best for analysis in Excel or Google Sheets. Loses nested data like comparisons.',
-          },
+          { label: 'Markdown (.md)', text: 'Human-readable. Best for reviewing your prompt library or sharing snippets with someone.' },
+          { label: 'JSON (.json)', text: 'Lossless backup with every field. Best for re-importing later — keeps scores, changes, model info, everything.' },
+          { label: 'CSV (.csv)', text: 'Flat spreadsheet format. Best for opening in Excel or Google Sheets to filter or sort.' },
         ],
       },
-      {
-        type: 'text',
-        text: 'Imports are always merged with your existing data — never overwrite. Duplicates (same rough text + same refined text + same model) are skipped automatically. Imported entries appear with an "imported" tag.',
-      },
+      { type: 'text', text: 'Imports are merged with your existing data — duplicates are detected and skipped. You can import a file from any of the three formats; the importer auto-detects.' },
     ],
   },
-
   {
-    id: 'comparison',
-    title: 'Cross-model comparison',
+    id: 'pdf-export',
+    title: 'PDF export',
     body: [
-      {
-        type: 'text',
-        text: 'After a refinement completes, a "Compare with other models" button appears. Click it, pick 1-3 other models, run comparison. The same rough prompt gets refined by each model in parallel.',
-      },
+      { type: 'text', text: 'Export the current refined prompt as a polished PDF — for sharing with clients, sending to colleagues who don\'t use the app, or including in larger documents. The PDF button (file icon) sits next to the Copy button in the refined prompt header.' },
       {
         type: 'list',
         items: [
-          {
-            label: 'Side-by-side columns',
-            text: 'Each model produces its own refined version, score, changes, cost, and latency.',
-          },
-          {
-            label: 'Use this version',
-            text: 'Promote any column to primary — replaces the main refined view with that model\'s output.',
-          },
-          {
-            label: 'Show details',
-            text: 'Expand any column to see what each model changed and why.',
-          },
+          { label: 'Preview first', text: 'Clicking the PDF button opens a preview modal showing exactly what the PDF will look like. Takes 1-2 seconds to generate. No download happens yet.' },
+          { label: 'What\'s included', text: 'Title, your rough prompt (for context), the refined prompt as the main content, the "What changed" list, and the quality scores including the radar charts.' },
+          { label: 'Filename', text: 'Defaults to prompt-refinery-YYYY-MM-DD-HHMM.pdf. You can edit it before downloading; illegal filesystem characters are stripped automatically.' },
+          { label: 'Real text, not images', text: 'The prompt text in the PDF is real, copyable text — recipients can paste it into their own AI tool. (The radar charts are rasterized as images, but the chart labels aren\'t the important part.)' },
         ],
       },
+      { type: 'text', text: 'The PDF uses standard system fonts (Helvetica-family) rather than embedded custom fonts. This keeps file size small and rendering reliable across all PDF viewers — Adobe Reader, Preview, browser viewers, mobile readers.' },
+      { type: 'note', text: 'For archival or re-import, prefer Markdown export — it\'s smaller, searchable, and round-trips back into the app. PDF is specifically for the sharing use case where the recipient won\'t open the app.' },
+    ],
+  },
+  {
+    id: 'usage-tracking',
+    title: 'Usage & cost tracking',
+    body: [
+      { type: 'text', text: 'Open the Usage panel from the sidebar to see token counts, estimated cost, and latency over the last 24 hours, 7 days, and 30 days. The chart shows daily cost over the past week.' },
+      { type: 'text', text: 'Cost is estimated from Anthropic\'s published per-million-token rates, applied to your local token counts. The final bill from Anthropic may differ slightly — treat the numbers here as a useful estimate, not an invoice.' },
+      { type: 'text', text: 'Click "Reset" to clear all tracked usage. The data is stored in localStorage, rolling 500 records.' },
+    ],
+  },
+  {
+    id: 'settings',
+    title: 'Settings',
+    body: [
       {
-        type: 'note',
-        text: 'Comparisons cost N times more than a single refinement (one API call per model). Worth doing when picking a model for a recurring task — not for every refinement.',
+        type: 'list',
+        items: [
+          { label: 'Prompt linter', text: 'Toggle the inline hints panel on/off.' },
+          { label: 'Privacy / PII scanner', text: 'Toggle the pre-send scan for sensitive content.' },
+          { label: 'Voice input', text: 'Toggle the microphone button. Disabled automatically if your browser doesn\'t support speech recognition.' },
+          { label: 'Refinement model', text: 'Which Claude model does the refinement. Sonnet 4.6 is the default — good balance of quality and cost.' },
+          { label: 'Test runner model', text: 'Which Claude model runs your A/B tests. Independent from the refinement model.' },
+          { label: 'Reset', text: 'Reverts all settings to their defaults.' },
+        ],
       },
     ],
   },
-
   {
     id: 'browser-extension',
     title: 'Browser extension',
     body: [
-      {
-        type: 'text',
-        text: 'A Chrome extension lives in the extension/ folder of your project. Click the toolbar icon from any webpage to open a quick-refine popup.',
-      },
-      {
-        type: 'step',
-        n: 1,
-        title: 'Load it once',
-        text: 'In Chrome, go to chrome://extensions/, enable Developer mode, click "Load unpacked", and select the extension folder.',
-      },
-      {
-        type: 'step',
-        n: 2,
-        title: 'Backend must be running',
-        text: 'The extension talks to localhost:3001, so npm run dev must be active in the server folder. Without it, the extension shows an error with instructions.',
-      },
-      {
-        type: 'step',
-        n: 3,
-        title: 'Use anywhere',
-        text: 'Click the toolbar icon. Type a rough prompt. Refine. Copy. Done — without leaving the page you were on.',
-      },
-      {
-        type: 'note',
-        text: 'The extension has no history or comparison features by design. It is for the quick "I need this refined right now" moment, not for everything the main app does.',
-      },
-    ],
-  },
-
-  {
-    id: 'how-refiner-works',
-    title: 'How the refiner works',
-    body: [
-      {
-        type: 'text',
-        text: 'Under the hood, the refiner sends your rough prompt to a Claude model with detailed instructions about what makes prompts good. It rewrites your prompt, identifies the changes, and scores both versions in a single API call.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Category-specific instructions',
-            text: 'Each category (General, Writing, Code, etc.) adjusts what the refiner pays attention to.',
-          },
-          {
-            label: 'Universal heuristics',
-            text: 'Three rules apply to every refinement regardless of category: use clear delimiters (XML-style tags) for multi-part prompts, add uncertainty handling for factual tasks, put the key instruction last in long prompts.',
-          },
-          {
-            label: 'Streaming',
-            text: 'The refined version streams in as it is generated. Scores and changes arrive at the end, after the refined text completes.',
-          },
-        ],
-      },
-      {
-        type: 'note',
-        text: 'These heuristics come from prompt-engineering documentation by OpenAI, Google, and Anthropic. They are what reliably makes prompts work better across model families.',
-      },
-    ],
-  },
-
-  {
-    id: 'categories',
-    title: 'Categories',
-    body: [
-      {
-        type: 'text',
-        text: 'The category chip above the composer tells the refiner what kind of prompt you are writing. Each adjusts the refinement instructions.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'General',
-            text: 'The catch-all. Makes prompts clear and well-structured without assuming a specific use case.',
-          },
-          {
-            label: 'Writing',
-            text: 'Tunes for creative or professional writing. Adds audience, tone, voice, length guidance.',
-          },
-          {
-            label: 'Code',
-            text: 'Tunes for software tasks. Adds language, input/output, edge cases, code style. Tells the eventual model to ask clarifying questions instead of guessing.',
-          },
-          {
-            label: 'Analysis',
-            text: 'Tunes for research and analysis. Asks for citations, reasoning, and explicit uncertainty handling — "say I do not know" rather than fabricating findings.',
-          },
-          {
-            label: 'Brainstorm',
-            text: 'Tunes for idea generation. Specifies number of ideas, categorization, evaluation criteria.',
-          },
-        ],
-      },
-    ],
-  },
-
-  {
-    id: 'models',
-    title: 'Models',
-    body: [
-      {
-        type: 'text',
-        text: 'Choose which model refines your prompts in Settings. Each has different trade-offs between capability, speed, and cost.',
-      },
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Sonnet 4.6 (default)',
-            text: 'Balanced. Best general choice. $3 input / $15 output per million tokens.',
-          },
-          {
-            label: 'Opus 4.7',
-            text: 'Most capable. Best for complex prompts. $5 / $25 per million tokens. Noticeably slower.',
-          },
-          {
-            label: 'Opus 4.6',
-            text: 'Previous flagship. Still very strong. Same pricing as 4.7.',
-          },
-          {
-            label: 'Haiku 4.5',
-            text: 'Fastest and cheapest. Good for simple rough prompts. $1 / $5 per million tokens.',
-          },
-        ],
-      },
-      {
-        type: 'note',
-        text: 'Output tokens cost 5x input across all current Anthropic models. Refinements use both — the input is your rough prompt plus the refiner\'s system instructions, the output is the refined version plus changes plus scores.',
-      },
-    ],
-  },
-
-  {
-    id: 'shortcuts',
-    title: 'Keyboard shortcuts',
-    body: [
-      {
-        type: 'list',
-        items: [
-          {
-            label: 'Cmd/Ctrl + Enter',
-            text: 'Submit the current rough prompt for refinement.',
-          },
-          {
-            label: 'Esc',
-            text: 'Close any open modal (PII warning, Export/Import).',
-          },
-          {
-            label: 'Enter (in rename)',
-            text: 'When renaming a saved prompt, commits the name.',
-          },
-          {
-            label: 'Esc (in rename)',
-            text: 'When renaming, cancels and keeps the old name.',
-          },
-        ],
-      },
-    ],
-  },
-
-  {
-    id: 'about',
-    title: 'About',
-    body: [
-      {
-        type: 'text',
-        text: 'Prompt Refinery is a personal tool, built from scratch and run locally. The frontend is React, the backend is Express, the model is Claude via the Anthropic API.',
-      },
-      {
-        type: 'text',
-        text: 'All your prompts, history, saved items, and usage data live in your browser\'s localStorage. Nothing is sent to any server other than Anthropic\'s API when you click Refine, and even then only the prompt itself plus refinement instructions.',
-      },
-      {
-        type: 'note',
-        text: 'Export your data regularly. localStorage is browser-scoped — if you clear browser data or switch machines, the data is gone unless you have an export.',
-      },
+      { type: 'text', text: 'A lightweight Chromium extension is included in the project under the extension/ folder. Install it as an unpacked extension to refine prompts from any web page without switching tabs.' },
+      { type: 'text', text: 'The extension popup mirrors the composer: rough prompt input, category picker, and submit. Results are shown in the popup itself. Same API key, same backend.' },
+      { type: 'note', text: 'The extension requires the local backend to be running. It calls the same /api/improve endpoint as the main app.' },
     ],
   },
 ];
