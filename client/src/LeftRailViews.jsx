@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   FunnelLogo, FolderIcon, PencilIcon, TrashIcon, CloseIcon,
   CheckIcon, ChevronUpIcon, DownloadIcon, UploadIcon,
+  SearchIcon, PinIcon, MoonIcon, SunIcon,
 } from './icons.jsx';
 import { CATEGORIES, MODELS, PRICING, SCORE_DIMENSIONS } from './constants.js';
 import { formatTime, formatCost, formatLatency, modelShortName, makeId } from './utils.js';
@@ -32,7 +33,49 @@ export function DrawerLogo() {
 
 /* ── HistoryView ─────────────────────────────────────────── */
 
-export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport }) {
+export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport, onTogglePin }) {
+  const [query, setQuery] = useState('');
+
+  const filtered = query.trim()
+    ? history.filter(e =>
+        e.rough.toLowerCase().includes(query.toLowerCase()) ||
+        (e.category || '').toLowerCase().includes(query.toLowerCase()) ||
+        (e.model || '').toLowerCase().includes(query.toLowerCase())
+      )
+    : history;
+
+  const pinned   = filtered.filter(e => e.pinned);
+  const unpinned = filtered.filter(e => !e.pinned);
+
+  function renderEntry(entry) {
+    return (
+      <li key={entry.timestamp} className={`history-li ${entry.pinned ? 'history-li-pinned' : ''}`}>
+        <div className="history-meta">
+          <span className="history-cat">{entry.category}</span>
+          {entry.isFollowUp && <span className="history-followup">follow-up</span>}
+          {entry.comparison && <span className="history-followup">compare</span>}
+          {entry.imported   && <span className="history-followup">imported</span>}
+          <span className="history-time">{formatTime(entry.timestamp)}</span>
+        </div>
+        <button className="history-text-btn" onClick={() => onLoad(entry)} title="Load this refinement">
+          {entry.rough}
+        </button>
+        <div className="history-actions">
+          <button
+            className={`history-pin-btn ${entry.pinned ? 'active' : ''}`}
+            onClick={() => onTogglePin(entry.timestamp)}
+            title={entry.pinned ? 'Unpin' : 'Pin to top'}
+            aria-label={entry.pinned ? 'Unpin' : 'Pin to top'}
+          >
+            <PinIcon filled={entry.pinned} />
+          </button>
+          <button className="history-action-btn" onClick={() => onLoad(entry)}>Load</button>
+          <button className="history-action-btn accent" onClick={() => onReRefine(entry)}>Re-refine</button>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <>
       <div className="drawer-head">
@@ -47,28 +90,35 @@ export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImport
         </div>
       </div>
       <div className="drawer-body">
-        {history.length === 0 ? (
-          <div className="drawer-empty">Your refined prompts will appear here.</div>
+        {history.length > 0 && (
+          <div className="drawer-search-wrap">
+            <span className="drawer-search-icon"><SearchIcon /></span>
+            <input
+              className="drawer-search-input"
+              type="text"
+              placeholder="Search history…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+            {query && (
+              <button className="drawer-search-clear" onClick={() => setQuery('')} aria-label="Clear search">×</button>
+            )}
+          </div>
+        )}
+        {filtered.length === 0 ? (
+          <div className="drawer-empty">
+            {query ? 'No matches found.' : 'Your refined prompts will appear here.'}
+          </div>
         ) : (
           <ul className="history-list">
-            {history.map((entry) => (
-              <li key={entry.timestamp} className="history-li">
-                <div className="history-meta">
-                  <span className="history-cat">{entry.category}</span>
-                  {entry.isFollowUp  && <span className="history-followup">follow-up</span>}
-                  {entry.comparison  && <span className="history-followup">compare</span>}
-                  {entry.imported    && <span className="history-followup">imported</span>}
-                  <span className="history-time">{formatTime(entry.timestamp)}</span>
-                </div>
-                <button className="history-text-btn" onClick={() => onLoad(entry)} title="Load this refinement">
-                  {entry.rough}
-                </button>
-                <div className="history-actions">
-                  <button className="history-action-btn" onClick={() => onLoad(entry)}>Load</button>
-                  <button className="history-action-btn accent" onClick={() => onReRefine(entry)}>Re-refine</button>
-                </div>
-              </li>
-            ))}
+            {pinned.length > 0 && (
+              <>
+                <li className="history-section-label">📌 Pinned</li>
+                {pinned.map(renderEntry)}
+                {unpinned.length > 0 && <li className="history-section-label">Recent</li>}
+              </>
+            )}
+            {unpinned.map(renderEntry)}
           </ul>
         )}
       </div>
@@ -84,6 +134,7 @@ let _draggedSavedId = null;
 export function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder, onAddFolder, onRenameFolder, onDeleteFolder }) {
   const [newFolderName, setNewFolderName] = useState('');
   const [addingFolder, setAddingFolder] = useState(false);
+  const [query, setQuery] = useState('');
   const addFolderInputRef = useRef(null);
 
   useEffect(() => {
@@ -97,10 +148,18 @@ export function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveTo
     setAddingFolder(false);
   }
 
-  const uncategorized = saved.filter(s => !s.folderId);
+  const visibleSaved = query.trim()
+    ? saved.filter(s =>
+        (s.name || '').toLowerCase().includes(query.toLowerCase()) ||
+        (s.rough || '').toLowerCase().includes(query.toLowerCase()) ||
+        (s.category || '').toLowerCase().includes(query.toLowerCase())
+      )
+    : saved;
+
+  const uncategorized = visibleSaved.filter(s => !s.folderId);
   const byFolder = folders.map(f => ({
     folder: f,
-    items: saved.filter(s => s.folderId === f.id),
+    items: visibleSaved.filter(s => s.folderId === f.id),
   }));
 
   return (
@@ -112,7 +171,22 @@ export function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveTo
         </button>
       </div>
       <div className="drawer-body">
-        {folders.length > 0 && (
+        {saved.length > 0 && (
+          <div className="drawer-search-wrap">
+            <span className="drawer-search-icon"><SearchIcon /></span>
+            <input
+              className="drawer-search-input"
+              type="text"
+              placeholder="Search saved prompts…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+            {query && (
+              <button className="drawer-search-clear" onClick={() => setQuery('')} aria-label="Clear search">×</button>
+            )}
+          </div>
+        )}
+        {folders.length > 0 && !query && (
           <p className="folder-drag-hint">Drag prompts onto a folder to organise them.</p>
         )}
         {addingFolder && (
@@ -773,6 +847,29 @@ export function SettingsView({ settings, onChange, onReset, speechSupported }) {
         <button className="text-btn" onClick={onReset}>Reset</button>
       </div>
       <div className="drawer-body settings-body">
+
+        <div className="settings-group">
+          <div className="settings-group-label">Appearance</div>
+          <button
+            type="button"
+            className={`toggle-row ${settings.darkMode ? 'on' : ''}`}
+            onClick={() => onChange({ darkMode: !settings.darkMode })}
+            role="switch" aria-checked={settings.darkMode}
+          >
+            <div className="toggle-row-text">
+              <div className="toggle-row-label">
+                <span className="toggle-row-icon">{settings.darkMode ? <MoonIcon /> : <SunIcon />}</span>
+                Dark mode
+              </div>
+              <div className="toggle-row-desc">
+                {settings.darkMode ? 'Using dark theme.' : 'Using light theme.'}
+              </div>
+            </div>
+            <div className="toggle-switch"><div className="toggle-switch-thumb" /></div>
+          </button>
+        </div>
+
+        <div className="settings-divider" />
 
         <div className="settings-group">
           <div className="settings-group-label">Prompt linter</div>

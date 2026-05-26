@@ -62,6 +62,7 @@ export const PRICING = {
 
 export const DEFAULT_SETTINGS = {
   model: DEFAULT_MODEL,
+  darkMode: false,
   linterEnabled: true,
   piiScannerEnabled: true,
   testModel: DEFAULT_MODEL,

@@ -227,6 +227,75 @@ export function ConfirmDialog({ message, confirmLabel = 'Delete', onConfirm, onC
   );
 }
 
+/* ── ShortcutsModal ──────────────────────────────────────── */
+
+const SHORTCUT_GROUPS = [
+  {
+    label: 'Composer',
+    shortcuts: [
+      { keys: ['⌘', '↵'],        desc: 'Refine prompt' },
+      { keys: ['/'],              desc: 'Focus composer from anywhere' },
+      { keys: ['Shift', '?'],     desc: 'Open this shortcuts panel' },
+    ],
+  },
+  {
+    label: 'Panels & navigation',
+    shortcuts: [
+      { keys: ['Esc'],            desc: 'Close active panel or modal' },
+    ],
+  },
+  {
+    label: 'Edit mode',
+    shortcuts: [
+      { keys: ['⌘', '↵'],        desc: 'Save inline edits' },
+      { keys: ['Esc'],            desc: 'Cancel inline edits' },
+    ],
+  },
+  {
+    label: 'Follow-up',
+    shortcuts: [
+      { keys: ['⌘', '↵'],        desc: 'Apply follow-up feedback' },
+    ],
+  },
+  {
+    label: 'Dialogs',
+    shortcuts: [
+      { keys: ['Enter'],          desc: 'Confirm dialog / fill template vars' },
+      { keys: ['Esc'],            desc: 'Dismiss dialog' },
+    ],
+  },
+];
+
+export function ShortcutsModal({ onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal shortcuts-modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+        <div className="modal-head">
+          <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close"><CloseIcon /></button>
+        </div>
+        <div className="modal-body shortcuts-body">
+          {SHORTCUT_GROUPS.map(group => (
+            <section key={group.label} className="shortcuts-group">
+              <div className="shortcuts-group-label">{group.label}</div>
+              {group.shortcuts.map((s, i) => (
+                <div key={i} className="shortcut-row">
+                  <span className="shortcut-keys">
+                    {s.keys.map((k, j) => (
+                      <span key={j}><kbd className="shortcut-kbd">{k}</kbd>{j < s.keys.length - 1 && <span className="shortcut-plus">+</span>}</span>
+                    ))}
+                  </span>
+                  <span className="shortcut-desc">{s.desc}</span>
+                </div>
+              ))}
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── ToastList ───────────────────────────────────────────── */
 
 export function ToastList({ toasts, onDismiss }) {

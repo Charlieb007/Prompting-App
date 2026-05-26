@@ -5499,6 +5499,286 @@ kbd {
   font-style: italic;
 }
 
+/* ── Dark mode ────────────────────────────────────────────────
+   Override all CSS custom properties under [data-theme="dark"].
+   Every component uses these vars so no component-level overrides
+   are needed.
+   ─────────────────────────────────────────────────────────── */
+
+:root[data-theme="dark"] {
+  --bg-canvas:  #1A1917;
+  --bg-surface: #211F1C;
+  --bg-subtle:  #2A2825;
+  --bg-rail:    #1E1C19;
+  --bg-elevated: #302E2A;
+
+  --text-primary:   #E8E4DC;
+  --text-secondary: #A8A49C;
+  --text-tertiary:  #706C64;
+
+  --border-faint:  rgba(232, 228, 220, 0.06);
+  --border-soft:   rgba(232, 228, 220, 0.12);
+  --border-strong: rgba(232, 228, 220, 0.22);
+  --border: rgba(232, 228, 220, 0.16);
+
+  --accent:      #E07E52;
+  --accent-hover: #C8623A;
+  --accent-bg:   #2E1F17;
+  --accent-text: #F0A07A;
+  --accent-ring: rgba(224, 126, 82, 0.22);
+
+  --lift:    #5DAF57;
+  --lift-bg: rgba(93, 175, 87, 0.14);
+
+  --rough: #706C64;
+
+  --warn:    #D4A017;
+  --warn-bg: rgba(212, 160, 23, 0.14);
+
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
+}
+
+/* Specific overrides for elements that use hard-coded backgrounds */
+:root[data-theme="dark"] .composer {
+  box-shadow: 0 0 0 1px var(--border-soft), 0 4px 20px rgba(0,0,0,0.4);
+}
+:root[data-theme="dark"] .sidebar {
+  box-shadow: 1px 0 0 var(--border-faint);
+}
+:root[data-theme="dark"] .run-drawer {
+  box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+}
+:root[data-theme="dark"] .modal {
+  background: var(--bg-surface);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+:root[data-theme="dark"] .modal-backdrop {
+  background: rgba(0,0,0,0.6);
+}
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] input[type="text"],
+:root[data-theme="dark"] input[type="password"],
+:root[data-theme="dark"] select {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-soft);
+}
+:root[data-theme="dark"] .send-btn {
+  background: var(--accent);
+}
+:root[data-theme="dark"] .send-btn:hover {
+  background: var(--accent-hover);
+}
+:root[data-theme="dark"] code {
+  background: var(--bg-subtle);
+  color: var(--accent-text);
+}
+
+/* ── Token counter in composer ────────────────────────────── */
+.token-count {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Keyboard shortcuts trigger button ────────────────────── */
+.shortcuts-trigger {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  background: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  padding: 0;
+}
+.shortcuts-trigger svg { width: 14px; height: 14px; }
+.shortcuts-trigger:hover { color: var(--text-secondary); border-color: var(--border-strong); }
+
+/* ── Shortcuts modal ──────────────────────────────────────── */
+.shortcuts-modal { max-width: 480px; }
+.shortcuts-body  { display: flex; flex-direction: column; gap: 20px; }
+
+.shortcuts-group { display: flex; flex-direction: column; gap: 6px; }
+.shortcuts-group-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+.shortcut-row {
+  display: flex; align-items: center;
+  gap: 12px;
+}
+.shortcut-keys {
+  display: flex; align-items: center; gap: 3px;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+.shortcut-kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 22px;
+  padding: 0 5px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-size: 11.5px; font-weight: 500;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+.shortcut-plus { font-size: 11px; color: var(--text-tertiary); }
+.shortcut-desc { font-size: 13px; color: var(--text-secondary); }
+
+/* ── History pin button ───────────────────────────────────── */
+.history-pin-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+.history-pin-btn svg { width: 13px; height: 13px; }
+.history-pin-btn:hover { color: var(--accent); background: var(--accent-bg); }
+.history-pin-btn.active { color: var(--accent); }
+
+.history-li-pinned { background: var(--bg-subtle); border-radius: var(--r-md); }
+
+.history-section-label {
+  display: block;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  padding: 10px 4px 4px;
+  list-style: none;
+}
+
+/* ── Drawer search box ────────────────────────────────────── */
+.drawer-search-wrap {
+  position: relative;
+  display: flex; align-items: center;
+  margin-bottom: 12px;
+}
+.drawer-search-icon {
+  position: absolute; left: 9px;
+  display: flex; align-items: center;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.drawer-search-icon svg { width: 14px; height: 14px; }
+.drawer-search-input {
+  width: 100%;
+  padding: 7px 28px 7px 30px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.drawer-search-input::placeholder { color: var(--text-tertiary); }
+.drawer-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+.drawer-search-clear {
+  position: absolute; right: 6px;
+  background: none; border: none;
+  font-size: 14px; color: var(--text-tertiary);
+  cursor: pointer; padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.drawer-search-clear:hover { color: var(--text-primary); }
+
+/* ── Toggle row icon (for dark mode toggle label) ─────────── */
+.toggle-row-icon {
+  display: inline-flex; align-items: center;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.toggle-row-icon svg { width: 14px; height: 14px; }
+
+/* ── AI Critique panel ────────────────────────────────────── */
+.critique-wrap { margin-top: 8px; }
+
+.critique-invite-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  background: none;
+  border: 1.5px dashed var(--border-soft);
+  border-radius: var(--r-lg);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.critique-invite-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.critique-invite-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+.critique-invite-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.critique-panel {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.critique-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-faint);
+}
+.critique-panel-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--text-secondary);
+}
+.critique-panel-label svg { width: 14px; height: 14px; }
+.critique-close-btn {
+  background: none; border: none;
+  font-size: 16px; color: var(--text-tertiary);
+  cursor: pointer; padding: 2px 6px;
+  border-radius: 4px; line-height: 1;
+  transition: color 0.12s;
+}
+.critique-close-btn:hover { color: var(--text-primary); }
+
+.critique-body {
+  padding: 14px 16px;
+  font-size: 14px; line-height: 1.65;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.critique-thinking {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 /* ── Mobile responsive ────────────────────────────────────────
    Breakpoint 1: ≤ 680px — tighten spacing, narrower sidebar
    Breakpoint 2: ≤ 420px — collapse sidebar to icon-only by default

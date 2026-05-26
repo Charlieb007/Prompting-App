@@ -109,3 +109,18 @@ export async function streamRunPrompt({ url, body, onChunk, onDone, onError, sig
     'run-error': (p) => onError?.(p.error || 'Run failed.'),
   });
 }
+
+export async function streamCritique({ url, body, onChunk, onDone, onError, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'critique-chunk': (p) => onChunk?.(p.text),
+    'critique-done':  (p) => onDone?.(p),
+    'critique-error': (p) => onError?.(p.error || 'Critique failed.'),
+  });
+}

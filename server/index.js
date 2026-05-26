@@ -615,6 +615,67 @@ app.post('/api/export/slack', async (req, res) => {
   }
 });
 
+/* ── AI Critique ──────────────────────────────────────────── */
+
+app.post('/api/critique', async (req, res) => {
+  const { prompt, model } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'prompt is required.' });
+
+  const critiqueModel = model || DEFAULT_MODEL;
+
+  setupSSE(res);
+
+  const systemPrompt = `You are a prompt quality analyst. Your job is to identify specific, actionable weaknesses in AI prompts.
+
+When given a prompt, output ONLY a short bullet-point critique with:
+- 2–4 specific remaining weaknesses or missing elements
+- 1–2 concrete suggestions to make it even stronger
+
+Rules:
+- Be direct and specific — name exactly what is weak or missing
+- No praise, no "this is good" filler, no preamble
+- Each bullet starts with a bold category label like **Missing:** or **Vague:** or **Suggestion:**
+- Keep each bullet to 1–2 sentences maximum`;
+
+  const userMessage = `Critique this prompt:\n\n${prompt}`;
+
+  try {
+    let fullText = '';
+    const startTime = Date.now();
+
+    const stream = await anthropic.messages.stream({
+      model: critiqueModel,
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        const text = chunk.delta.text;
+        fullText += text;
+        sendEvent(res, 'critique-chunk', { text });
+      }
+    }
+
+    const finalMessage = await stream.finalMessage();
+    const latencyMs = Date.now() - startTime;
+    sendEvent(res, 'critique-done', {
+      usage: {
+        inputTokens: finalMessage.usage?.input_tokens || 0,
+        outputTokens: finalMessage.usage?.output_tokens || 0,
+      },
+      latencyMs,
+    });
+
+  } catch (err) {
+    console.error('/api/critique error:', err);
+    sendEvent(res, 'critique-error', { error: err.message || 'Critique failed.' });
+  } finally {
+    res.end();
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });

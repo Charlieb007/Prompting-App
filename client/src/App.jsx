@@ -17,7 +17,7 @@ import {
   formatLatency, getSpeechRecognition, defaultPDFFilename, sanitizeFilename,
   extractVariables, fillVariables,
 } from './utils.js';
-import { streamRefinement, streamComparison, streamTest, streamRunPrompt } from './sse.js';
+import { streamRefinement, streamComparison, streamTest, streamRunPrompt, streamCritique } from './sse.js';
 
 // Icons
 import {
@@ -25,6 +25,7 @@ import {
   SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
   UsageIcon, SendIcon, MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
   ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon, PencilIcon,
+  KeyboardIcon, CritiqueIcon,
 } from './icons.jsx';
 
 // Components (extracted modules)
@@ -35,7 +36,7 @@ import {
 } from './LeftRailViews.jsx';
 import {
   PIIWarningModal, TemplateVariablesModal, ShareModal,
-  PromptDiffPanel, ConfirmDialog, ToastList,
+  PromptDiffPanel, ConfirmDialog, ToastList, ShortcutsModal,
 } from './Modals.jsx';
 import {
   SkeletonBar, ChangesSkeleton, ScoresSkeleton, ComparisonColumnSkeleton,
@@ -161,6 +162,16 @@ function App() {
   const [editDraft, setEditDraft] = useState('');
   const editTextareaRef = useRef(null);
 
+  // ── Keyboard shortcuts modal ───────────────────────────────
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // ── AI Critique ────────────────────────────────────────────
+  const [critiqueOpen, setCritiqueOpen] = useState(false);
+  const [critiqueText, setCritiqueText] = useState('');
+  const [critiquing, setCritiquing] = useState(false);
+  const [critiqueDone, setCritiqueDone] = useState(false);
+  const critiqueAbortRef = useRef(null);
+
   // ── Toast notifications ────────────────────────────────────
   const [toasts, setToasts] = useState([]);
   function addToast(message, type = 'success') {
@@ -221,6 +232,15 @@ function App() {
       catch { setChainSteps([]); }
     }
   }, []);
+
+  // Apply / remove dark-mode attribute on <html> whenever the setting changes
+  useEffect(() => {
+    if (settings.darkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }, [settings.darkMode]);
 
   useEffect(() => {
     if (currentConvo) {
@@ -315,19 +335,26 @@ function App() {
   useEffect(() => {
     function onKey(e) {
       // Escape: close active panel (only when no modal is blocking)
-      if (e.key === 'Escape' && !confirmState && !piiFindings && !templateVarsOpen && !shareModalOpen && !pdfModalOpen && !importExportOpen) {
+      if (e.key === 'Escape' && !confirmState && !piiFindings && !templateVarsOpen && !shareModalOpen && !pdfModalOpen && !importExportOpen && !shortcutsOpen) {
         if (activeView !== null) { e.preventDefault(); setActiveView(null); }
       }
+      // Escape: close shortcuts modal
+      if (e.key === 'Escape' && shortcutsOpen) { e.preventDefault(); setShortcutsOpen(false); }
       // /: focus composer when not in an input or textarea
       if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         setActiveView(null);
         setTimeout(() => textareaRef.current?.focus(), 60);
       }
+      // Shift+?: open keyboard shortcuts cheatsheet
+      if (e.key === '?' && e.shiftKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeView, confirmState, piiFindings, templateVarsOpen, shareModalOpen, pdfModalOpen, importExportOpen]);
+  }, [activeView, confirmState, piiFindings, templateVarsOpen, shareModalOpen, pdfModalOpen, importExportOpen, shortcutsOpen]);
 
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
@@ -394,6 +421,19 @@ function App() {
     }
   }
 
+  function togglePinEntry(timestamp) {
+    const updated = history.map(e =>
+      e.timestamp === timestamp ? { ...e, pinned: !e.pinned } : e
+    );
+    // Keep pinned items at the top
+    const sorted = [
+      ...updated.filter(e => e.pinned),
+      ...updated.filter(e => !e.pinned),
+    ];
+    setHistory(sorted);
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(sorted));
+  }
+
   function clearCurrentRefinement() {
     setImprovedPrompt('');
     setChanges([]);
@@ -411,6 +451,9 @@ function App() {
     setDiffOpen(false);
     setEditingRefined(false);
     setEditDraft('');
+    setCritiqueOpen(false);
+    setCritiqueText('');
+    setCritiqueDone(false);
   }
 
   function loadFromHistory(entry) {
@@ -1470,6 +1513,7 @@ function App() {
     if (compareAbortRef.current) compareAbortRef.current.abort();
     if (testAbortRef.current) testAbortRef.current.abort();
     if (chainAbortRef.current) chainAbortRef.current.abort();
+    if (critiqueAbortRef.current) critiqueAbortRef.current.abort();
     setMultiPassCurrent(0);
   }
 
@@ -1513,6 +1557,35 @@ function App() {
     setEditDraft('');
   }
 
+  async function handleCritique() {
+    if (critiquing || !displayImproved) return;
+    setCritiqueOpen(true);
+    setCritiqueText('');
+    setCritiqueDone(false);
+    setCritiquing(true);
+
+    const controller = new AbortController();
+    critiqueAbortRef.current = controller;
+
+    try {
+      await streamCritique({
+        url: `${API_URL}/api/critique`,
+        body: { prompt: displayImproved, model: settings.model },
+        onChunk: (text) => setCritiqueText(prev => prev + text),
+        onDone: () => setCritiqueDone(true),
+        onError: (err) => { setCritiqueText(`Error: ${err}`); setCritiqueDone(true); },
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setCritiqueText(`Error: ${err.message}`);
+        setCritiqueDone(true);
+      }
+    } finally {
+      setCritiquing(false);
+    }
+  }
+
   function handleKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -1524,6 +1597,7 @@ function App() {
   function closePDFExport() { setPdfModalOpen(false); }
 
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
+  const estimatedTokens = roughPrompt.trim() ? Math.ceil(roughPrompt.length / 4) : 0;
 
   // Versioning: when the user is browsing an older version, display its data instead of live state
   const viewingVersion = viewingVersionId ? promptVersions.find(v => v.id === viewingVersionId) : null;
@@ -1714,6 +1788,7 @@ function App() {
                 onReRefine={reRefineFromHistory}
                 onClear={clearHistory}
                 onOpenImportExport={() => setImportExportOpen(true)}
+                onTogglePin={togglePinEntry}
               />
             )}
             {activeView === 'saved' && (
@@ -2037,6 +2112,49 @@ function App() {
 
             {showFollowUp && <FollowUpPanel disabled={busy} onSubmit={handleFollowUp} />}
 
+            {/* AI Critique panel */}
+            {refinementReady && (
+              <div className="critique-wrap">
+                {!critiqueOpen ? (
+                  <button
+                    type="button"
+                    className="critique-invite-btn"
+                    onClick={handleCritique}
+                    disabled={busy}
+                  >
+                    <CritiqueIcon />
+                    <span>Get AI feedback on this refined prompt</span>
+                  </button>
+                ) : (
+                  <div className="critique-panel">
+                    <div className="critique-panel-head">
+                      <span className="critique-panel-label"><CritiqueIcon /> AI feedback</span>
+                      {critiqueDone && (
+                        <button
+                          className="critique-close-btn"
+                          onClick={() => { setCritiqueOpen(false); setCritiqueText(''); setCritiqueDone(false); }}
+                          aria-label="Close feedback"
+                        >×</button>
+                      )}
+                    </div>
+                    {critiqueText ? (
+                      <div className="critique-body">
+                        {critiqueText}
+                        {!critiqueDone && <span className="caret" />}
+                      </div>
+                    ) : (
+                      <div className="critique-thinking">
+                        <span className="thinking-dots">
+                          <span className="thinking-dot" /><span className="thinking-dot" /><span className="thinking-dot" />
+                        </span>
+                        Analysing…
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {error && (
               <div className="message">
                 <div className="error">{error}</div>
@@ -2080,8 +2198,19 @@ function App() {
             <div className="composer-actions">
               <span className="char-count">
                 {isRecording && <span className="recording-indicator"><span className="recording-dot" /> Recording</span>}
-                {!isRecording && roughPrompt.length > 0 && `${roughPrompt.length} characters`}
+                {!isRecording && estimatedTokens > 0 && (
+                  <span className="token-count">~{estimatedTokens.toLocaleString()} tokens</span>
+                )}
               </span>
+              <button
+                type="button"
+                className="shortcuts-trigger"
+                onClick={() => setShortcutsOpen(true)}
+                title="Keyboard shortcuts (Shift+?)"
+                aria-label="Show keyboard shortcuts"
+              >
+                <KeyboardIcon />
+              </button>
               <div className="composer-buttons">
                 {showMicButton && !busy && (
                   <button
@@ -2243,6 +2372,8 @@ function App() {
           onCancel={closeConfirm}
         />
       )}
+
+      {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
 
       <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>
