@@ -1,0 +1,82 @@
+{
+  "14d65ab8": {
+    "id": "14d65ab8",
+    "rough": "explain how to us a macbook",
+    "improved": "\nProvide a beginner-friendly guide on how to use a MacBook for the first time. The reader has little to no experience with macOS and may be switching from Windows or using a laptop for the first time.\n\nCover the following topics in order:\n1. **Setting up your MacBook** – powering on, initial setup, and Apple ID\n2. **Navigating macOS** – the Desktop, Dock, Menu Bar, and Finder\n3. **Essential gestures** – common trackpad gestures (scroll, zoom, swipe, etc.)\n4. **Core built-in apps** – Safari, Mail, Calendar, and Notes\n5. **Managing files and folders** – creating, moving, and organizing files\n6. **System settings** – adjusting display, sound, Wi-Fi, and notifications\n7. **Tips and shortcuts** – 5–10 must-know keyboard shortcuts for efficiency\n\n**Format requirements:**\n- Use clear headings and bullet points for each section\n- Keep explanations simple — avoid jargon, and define any technical terms used\n- Aim for a total length of 600–900 words\n- Use a friendly, encouraging tone suitable for a non-technical adult audience\n- Do not cover advanced topics like Terminal, programming, or enterprise IT management\n<<",
+    "changes": [
+      {
+        "title": "Fixed typo and clarified the core ask",
+        "explanation": "The original prompt had a typo ('us a macbook') and was vague. The refined version clearly asks for a beginner guide on using a MacBook for the first time."
+      },
+      {
+        "title": "Defined the target audience",
+        "explanation": "Added specifics about the intended reader — a beginner with little to no macOS experience, possibly switching from Windows — so the AI calibrates vocabulary and assumed knowledge appropriately."
+      },
+      {
+        "title": "Structured the content with specific topics",
+        "explanation": "Broke the request into 7 numbered sections covering the most essential beginner topics, giving the AI a clear content outline to follow rather than guessing what to include."
+      },
+      {
+        "title": "Specified output format and length",
+        "explanation": "Added requirements for headings, bullet points, and a target word count (600–900 words) to ensure the response is well-organized and appropriately sized — not too brief or overwhelming."
+      },
+      {
+        "title": "Set tone guidelines",
+        "explanation": "Requested a friendly, encouraging, jargon-free tone to match the non-technical audience and improve readability."
+      },
+      {
+        "title": "Added exclusion constraints",
+        "explanation": "Explicitly excluded advanced topics like Terminal and programming to keep the guide focused and prevent the AI from going off-scope."
+      }
+    ],
+    "scores": {
+      "rough": {
+        "specificity": {
+          "score": 1,
+          "rationale": "The prompt is extremely vague — 'explain how to use a macbook' gives no direction on scope, depth, or what aspects to cover."
+        },
+        "audience": {
+          "score": 1,
+          "rationale": "No audience is defined. The AI has no idea whether this is for a child, a business professional, or a first-time laptop user."
+        },
+        "format": {
+          "score": 1,
+          "rationale": "No format guidance whatsoever — no requested structure, length, or tone."
+        },
+        "constraints": {
+          "score": 1,
+          "rationale": "No constraints given. The AI could produce anything from a one-liner to a 10,000-word essay."
+        },
+        "examples": {
+          "score": 1,
+          "rationale": "No examples, analogies, or reference points provided."
+        }
+      },
+      "refined": {
+        "specificity": {
+          "score": 5,
+          "rationale": "Seven specific topic areas are clearly defined, leaving little ambiguity about what to cover."
+        },
+        "audience": {
+          "score": 5,
+          "rationale": "Audience is well-defined: a non-technical adult beginner, possibly switching from Windows, using a MacBook for the first time."
+        },
+        "format": {
+          "score": 5,
+          "rationale": "Clear formatting instructions including headings, bullet points, word count range, and tone guidance are all specified."
+        },
+        "constraints": {
+          "score": 4,
+          "rationale": "Good exclusions (no Terminal, programming, enterprise IT) and content boundaries are set. Could optionally specify macOS version, but solid overall."
+        },
+        "examples": {
+          "score": 3,
+          "rationale": "No concrete examples are provided within the prompt itself, though the listed keyboard shortcuts section implicitly requests examples in the output."
+        }
+      }
+    },
+    "category": "general",
+    "model": "claude-sonnet-4-6",
+    "createdAt": 1779766857610
+  }
+}

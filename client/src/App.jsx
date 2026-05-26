@@ -1042,23 +1042,27 @@ function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport 
           <ul className="history-list">
             {history.map((entry) => (
               <li key={entry.timestamp} className="history-li">
-                <button className="history-item" onClick={() => onLoad(entry)}>
-                  <div className="history-row">
-                    <span className="history-cat">{entry.category}</span>
-                    {entry.isFollowUp && <span className="history-followup">follow-up</span>}
-                    {entry.comparison && <span className="history-followup">compare</span>}
-                    {entry.imported && <span className="history-followup">imported</span>}
-                    <span className="history-time">{formatTime(entry.timestamp)}</span>
-                  </div>
-                  <span className="history-text">{entry.rough}</span>
+                {/* Top row: badges + time */}
+                <div className="history-meta">
+                  <span className="history-cat">{entry.category}</span>
+                  {entry.isFollowUp && <span className="history-followup">follow-up</span>}
+                  {entry.comparison && <span className="history-followup">compare</span>}
+                  {entry.imported && <span className="history-followup">imported</span>}
+                  <span className="history-time">{formatTime(entry.timestamp)}</span>
+                </div>
+                {/* Prompt text — click to load */}
+                <button className="history-text-btn" onClick={() => onLoad(entry)} title="Load this refinement">
+                  {entry.rough}
                 </button>
-                <button
-                  className="history-rerefine-btn"
-                  onClick={(e) => { e.stopPropagation(); onReRefine(entry); }}
-                  title="Load this prompt into the composer to re-refine"
-                >
-                  Re-refine
-                </button>
+                {/* Action row */}
+                <div className="history-actions">
+                  <button className="history-action-btn" onClick={() => onLoad(entry)}>
+                    Load
+                  </button>
+                  <button className="history-action-btn accent" onClick={() => onReRefine(entry)}>
+                    Re-refine
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -1067,6 +1071,10 @@ function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport 
     </>
   );
 }
+
+// Drag-and-drop: store the dragged entry id in a ref shared via context
+// (simple module-level variable — only one drag happens at a time)
+let _draggedSavedId = null;
 
 function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder, onAddFolder, onRenameFolder, onDeleteFolder }) {
   const [newFolderName, setNewFolderName] = useState('');
@@ -1100,6 +1108,9 @@ function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder,
         </button>
       </div>
       <div className="drawer-body">
+        {folders.length > 0 && (
+          <p className="folder-drag-hint">Drag prompts onto a folder to organise them.</p>
+        )}
         {addingFolder && (
           <div className="folder-add-row">
             <input
@@ -1122,7 +1133,7 @@ function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder,
           <div className="drawer-empty">Star a refined prompt to save it here for later.</div>
         ) : (
           <>
-            {/* Named folders */}
+            {/* Named folders — are drop targets */}
             {byFolder.map(({ folder, items }) => (
               <FolderSection
                 key={folder.id}
@@ -1138,31 +1149,39 @@ function SavedView({ saved, folders, onLoad, onRename, onRemove, onMoveToFolder,
               />
             ))}
 
-            {/* Uncategorized */}
-            {uncategorized.length > 0 && (
-              <div className="folder-section">
-                {folders.length > 0 && (
-                  <div className="folder-header">
-                    <span className="folder-icon"><FolderIcon /></span>
-                    <span className="folder-name">Uncategorized</span>
-                    <span className="folder-count">{uncategorized.length}</span>
-                  </div>
-                )}
-                <ul className="saved-list">
-                  {uncategorized.map(entry => (
-                    <SavedItem
-                      key={entry.id}
-                      entry={entry}
-                      folders={folders}
-                      onLoad={onLoad}
-                      onRename={onRename}
-                      onRemove={onRemove}
-                      onMoveToFolder={onMoveToFolder}
-                    />
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Uncategorized — also a drop target (to remove from folder) */}
+            <div
+              className="folder-section uncategorized-section"
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                if (_draggedSavedId) { onMoveToFolder(_draggedSavedId, null); _draggedSavedId = null; }
+              }}
+            >
+              {folders.length > 0 && (
+                <div className="folder-header no-click">
+                  <span className="folder-icon"><FolderIcon /></span>
+                  <span className="folder-name">Uncategorized</span>
+                  <span className="folder-count">{uncategorized.length}</span>
+                </div>
+              )}
+              {uncategorized.length === 0 && folders.length > 0 && (
+                <div className="folder-drop-zone">Drop here to remove from folder</div>
+              )}
+              <ul className="saved-list">
+                {uncategorized.map(entry => (
+                  <SavedItem
+                    key={entry.id}
+                    entry={entry}
+                    folders={folders}
+                    onLoad={onLoad}
+                    onRename={onRename}
+                    onRemove={onRemove}
+                    onMoveToFolder={onMoveToFolder}
+                  />
+                ))}
+              </ul>
+            </div>
           </>
         )}
       </div>
@@ -1175,6 +1194,7 @@ function FolderSection({ folder, items, allFolders, onLoad, onRename, onRemove, 
   const [draftName, setDraftName] = useState(folder.name);
   const nameInputRef = useRef(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     if (editingName) nameInputRef.current?.focus();
@@ -1186,8 +1206,31 @@ function FolderSection({ folder, items, allFolders, onLoad, onRename, onRemove, 
     setEditingName(false);
   }
 
+  function handleDragOver(e) {
+    e.preventDefault();
+    setDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setDragOver(false);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    if (_draggedSavedId) {
+      onMoveToFolder(_draggedSavedId, folder.id);
+      _draggedSavedId = null;
+    }
+  }
+
   return (
-    <div className="folder-section">
+    <div
+      className={`folder-section ${dragOver ? 'drag-over' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="folder-header" onClick={() => !editingName && setCollapsed(c => !c)}>
         <span className="folder-icon"><FolderIcon /></span>
         {editingName ? (
@@ -1222,7 +1265,7 @@ function FolderSection({ folder, items, allFolders, onLoad, onRename, onRemove, 
       {!collapsed && (
         <ul className="saved-list">
           {items.length === 0
-            ? <li className="folder-empty-hint">No prompts in this folder.</li>
+            ? <li className="folder-empty-hint">Drop a prompt here, or no prompts yet.</li>
             : items.map(entry => (
                 <SavedItem
                   key={entry.id}
@@ -1244,7 +1287,6 @@ function FolderSection({ folder, items, allFolders, onLoad, onRename, onRemove, 
 function SavedItem({ entry, folders, onLoad, onRename, onRemove, onMoveToFolder }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(entry.name || '');
-  const [showFolderPicker, setShowFolderPicker] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1272,7 +1314,12 @@ function SavedItem({ entry, folders, onLoad, onRename, onRemove, onMoveToFolder 
   const displayName = entry.name || entry.rough;
 
   return (
-    <li className="saved-item">
+    <li
+      className="saved-item"
+      draggable
+      onDragStart={() => { _draggedSavedId = entry.id; }}
+      onDragEnd={() => { _draggedSavedId = null; }}
+    >
       {editing ? (
         <input
           ref={inputRef}
@@ -1295,28 +1342,6 @@ function SavedItem({ entry, folders, onLoad, onRename, onRemove, onMoveToFolder 
         </button>
       )}
       <div className="saved-actions">
-        {folders && folders.length > 0 && (
-          <div className="saved-folder-wrap">
-            <button
-              className="saved-action-btn"
-              onClick={e => { e.stopPropagation(); setShowFolderPicker(v => !v); }}
-              title="Move to folder"
-            ><FolderIcon /></button>
-            {showFolderPicker && (
-              <div className="folder-picker-dropdown">
-                <button className="folder-picker-option" onClick={() => { onMoveToFolder(entry.id, null); setShowFolderPicker(false); }}>
-                  Uncategorized
-                </button>
-                {folders.map(f => (
-                  <button key={f.id} className={`folder-picker-option ${entry.folderId === f.id ? 'active' : ''}`}
-                    onClick={() => { onMoveToFolder(entry.id, f.id); setShowFolderPicker(false); }}>
-                    {f.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
         <button
           className="saved-action-btn"
           onClick={(e) => { e.stopPropagation(); setEditing(true); }}
