@@ -509,6 +509,112 @@ app.get('/share/:id', (req, res) => {
 </html>`);
 });
 
+/* ── Export to Notion ─────────────────────────────────────── */
+
+app.post('/api/export/notion', async (req, res) => {
+  const { rough, improved, changes, category, model, token, databaseId } = req.body;
+
+  if (!token)      return res.status(400).json({ error: 'Notion API token is required.' });
+  if (!databaseId) return res.status(400).json({ error: 'Notion database ID is required.' });
+  if (!rough || !improved) return res.status(400).json({ error: 'rough and improved are required.' });
+
+  const changesText = (changes || [])
+    .map(c => `• ${c.title}: ${c.explanation}`)
+    .join('\n');
+
+  const titleText = `Refined prompt · ${category || 'general'}`;
+
+  const children = [
+    { object: 'block', type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: 'Original' } }] } },
+    { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: rough.slice(0, 2000) } }] } },
+    { object: 'block', type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: 'Refined' } }] } },
+    { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: improved.slice(0, 2000) } }] } },
+  ];
+
+  if (changesText) {
+    children.push(
+      { object: 'block', type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: 'What changed' } }] } },
+      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: changesText.slice(0, 2000) } }] } }
+    );
+  }
+
+  if (model) {
+    children.push({
+      object: 'block', type: 'paragraph',
+      paragraph: { rich_text: [{ type: 'text', text: { content: `Model: ${model}` }, annotations: { color: 'gray' } }] },
+    });
+  }
+
+  try {
+    const response = await fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28',
+      },
+      body: JSON.stringify({
+        parent: { database_id: databaseId },
+        properties: {
+          title: { title: [{ text: { content: titleText } }] },
+        },
+        children,
+      }),
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      res.json({ ok: true, url: data.url, id: data.id });
+    } else {
+      console.error('Notion API error:', data);
+      res.status(response.status).json({ error: data.message || 'Notion API returned an error.' });
+    }
+  } catch (err) {
+    console.error('Notion export error:', err);
+    res.status(500).json({ error: 'Could not reach Notion API.' });
+  }
+});
+
+/* ── Export to Slack ──────────────────────────────────────── */
+
+app.post('/api/export/slack', async (req, res) => {
+  const { rough, improved, changes, category, model, webhookUrl } = req.body;
+
+  if (!webhookUrl) return res.status(400).json({ error: 'Slack webhook URL is required.' });
+  if (!rough || !improved) return res.status(400).json({ error: 'rough and improved are required.' });
+
+  const changesSection = (changes || []).length
+    ? `*What changed:*\n${changes.map(c => `• *${c.title}*: ${c.explanation}`).join('\n')}`
+    : '';
+
+  const text = [
+    `*Refined prompt* · _${category || 'general'}_ · ${model || ''}`,
+    '',
+    `*Original:*\n>${rough.replace(/\n/g, '\n>')}`,
+    '',
+    `*Refined:*\n>${improved.replace(/\n/g, '\n>')}`,
+    changesSection ? `\n${changesSection}` : '',
+  ].filter(Boolean).join('\n');
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+
+    if (response.ok) {
+      res.json({ ok: true });
+    } else {
+      const body = await response.text();
+      res.status(response.status).json({ error: body || 'Slack webhook returned an error.' });
+    }
+  } catch (err) {
+    console.error('Slack export error:', err);
+    res.status(500).json({ error: 'Could not reach Slack webhook.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });

@@ -82,6 +82,9 @@ const DEFAULT_SETTINGS = {
   voiceEnabled: true,
   customDimensions: [],    // [{id, label, description}] — extra scoring dimensions
   removedDimensions: [],   // ids of built-in dimensions to hide
+  notionToken: '',
+  notionDatabaseId: '',
+  slackWebhookUrl: '',
 };
 
 function formatTime(timestamp) {
@@ -1912,6 +1915,84 @@ function buildShareMarkdown(rough, improved, changes) {
   return md;
 }
 
+/* ── Word-level diff utilities ───────────────────────────── */
+
+/**
+ * Compute a word-level diff between two strings.
+ * Returns an array of { type: 'equal'|'delete'|'insert', text: string }.
+ * Uses a simple LCS-based algorithm (no external deps).
+ */
+function computeWordDiff(oldText, newText) {
+  const oldWords = oldText.split(/(\s+)/);
+  const newWords = newText.split(/(\s+)/);
+  const m = oldWords.length;
+  const n = newWords.length;
+
+  // Build LCS table
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldWords[i - 1] === newWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // Backtrack to build diff
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldWords[i - 1] === newWords[j - 1]) {
+      result.unshift({ type: 'equal', text: oldWords[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ type: 'insert', text: newWords[j - 1] });
+      j--;
+    } else {
+      result.unshift({ type: 'delete', text: oldWords[i - 1] });
+      i--;
+    }
+  }
+
+  // Merge consecutive tokens of the same type
+  const merged = [];
+  for (const token of result) {
+    if (merged.length > 0 && merged[merged.length - 1].type === token.type) {
+      merged[merged.length - 1].text += token.text;
+    } else {
+      merged.push({ ...token });
+    }
+  }
+  return merged;
+}
+
+function PromptDiffPanel({ rough, improved }) {
+  const tokens = computeWordDiff(rough || '', improved || '');
+  const deletedCount = tokens.filter(t => t.type === 'delete').length;
+  const insertedCount = tokens.filter(t => t.type === 'insert').length;
+
+  return (
+    <div className="prompt-diff-panel">
+      <div className="prompt-diff-head">
+        <span className="prompt-diff-title">Prompt diff</span>
+        <span className="prompt-diff-stats">
+          <span className="diff-stat removed">−{deletedCount} removed</span>
+          <span className="diff-stat added">+{insertedCount} added</span>
+        </span>
+      </div>
+      <div className="prompt-diff-body">
+        {tokens.map((token, idx) => (
+          token.type === 'equal'
+            ? <span key={idx}>{token.text}</span>
+            : <span key={idx} className={`diff-token diff-${token.type}`}>{token.text}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Confirm Dialog ───────────────────────────────────────── */
 
 function ConfirmDialog({ message, confirmLabel = 'Delete', onConfirm, onCancel }) {
@@ -2208,6 +2289,79 @@ function SettingsView({ settings, onChange, onReset, speechSupported }) {
         <div className="settings-divider" />
 
         <ScoringDimensionsSettings settings={settings} onChange={onChange} />
+
+        <div className="settings-divider" />
+
+        <div className="settings-group">
+          <div className="settings-group-label">Integrations</div>
+          <div className="settings-group-hint">
+            Export refined prompts directly to Notion or Slack. Credentials are stored only in your browser.
+          </div>
+
+          <div className="integration-section">
+            <div className="integration-section-head">
+              <span className="integration-section-title">Notion</span>
+              <a
+                className="integration-docs-link"
+                href="https://developers.notion.com/docs/create-a-notion-integration"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                How to create a token ↗
+              </a>
+            </div>
+            <label className="settings-field-label" htmlFor="notion-token">
+              Internal Integration Token
+            </label>
+            <input
+              id="notion-token"
+              type="password"
+              className="settings-text-input"
+              placeholder="secret_xxxxxxxxxxxxxxx"
+              value={settings.notionToken || ''}
+              onChange={e => onChange({ notionToken: e.target.value })}
+              autoComplete="off"
+            />
+            <label className="settings-field-label" htmlFor="notion-db">
+              Database ID
+            </label>
+            <input
+              id="notion-db"
+              type="text"
+              className="settings-text-input"
+              placeholder="32-character database ID from the URL"
+              value={settings.notionDatabaseId || ''}
+              onChange={e => onChange({ notionDatabaseId: e.target.value })}
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="integration-section" style={{ marginTop: '1rem' }}>
+            <div className="integration-section-head">
+              <span className="integration-section-title">Slack</span>
+              <a
+                className="integration-docs-link"
+                href="https://api.slack.com/messaging/webhooks"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                How to create a webhook ↗
+              </a>
+            </div>
+            <label className="settings-field-label" htmlFor="slack-webhook">
+              Incoming Webhook URL
+            </label>
+            <input
+              id="slack-webhook"
+              type="password"
+              className="settings-text-input"
+              placeholder="https://hooks.slack.com/services/…"
+              value={settings.slackWebhookUrl || ''}
+              onChange={e => onChange({ slackWebhookUrl: e.target.value })}
+              autoComplete="off"
+            />
+          </div>
+        </div>
 
       </div>
     </>
@@ -3336,6 +3490,7 @@ function App() {
   const [promptVersions, setPromptVersions] = useState([]);
   const [viewingVersionId, setViewingVersionId] = useState(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
 
   // ── Toast notifications ────────────────────────────────────
   const [toasts, setToasts] = useState([]);
@@ -3584,6 +3739,7 @@ function App() {
     setPromptVersions([]);
     setViewingVersionId(null);
     setVersionsOpen(false);
+    setDiffOpen(false);
   }
 
   function loadFromHistory(entry) {
@@ -3782,6 +3938,85 @@ function App() {
       }
     } catch (err) {
       console.error('Share failed:', err);
+    }
+  }
+
+  /* ── Export to Notion / Slack ────────────────────────── */
+
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const exportDropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onOutside(e) {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target)) {
+        setExportDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, []);
+
+  async function handleExportNotion() {
+    setExportDropdownOpen(false);
+    const { notionToken, notionDatabaseId } = settings;
+    if (!notionToken || !notionDatabaseId) {
+      addToast('Add your Notion token & database ID in Settings → Integrations first.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/export/notion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rough: submittedPrompt,
+          improved: improvedPrompt,
+          changes,
+          category,
+          model: primaryModel,
+          token: notionToken,
+          databaseId: notionDatabaseId,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        addToast('Exported to Notion ✓', 'success');
+      } else {
+        addToast(`Notion export failed: ${data.error || 'unknown error'}`, 'error');
+      }
+    } catch (err) {
+      addToast(`Notion export error: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleExportSlack() {
+    setExportDropdownOpen(false);
+    const { slackWebhookUrl } = settings;
+    if (!slackWebhookUrl) {
+      addToast('Add your Slack Incoming Webhook URL in Settings → Integrations first.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/export/slack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rough: submittedPrompt,
+          improved: improvedPrompt,
+          changes,
+          category,
+          model: primaryModel,
+          webhookUrl: slackWebhookUrl,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        addToast('Posted to Slack ✓', 'success');
+      } else {
+        addToast(`Slack export failed: ${data.error || 'unknown error'}`, 'error');
+      }
+    } catch (err) {
+      addToast(`Slack export error: ${err.message}`, 'error');
     }
   }
 
@@ -4901,6 +5136,37 @@ function App() {
                     >
                       <ShareIcon />
                     </button>
+                    <div className="export-dropdown-wrap" ref={exportDropdownRef}>
+                      <button
+                        className={`icon-action ${exportDropdownOpen ? 'active' : ''}`}
+                        onClick={() => setExportDropdownOpen(o => !o)}
+                        disabled={!refinedComplete || busy}
+                        aria-label="Export to…"
+                        title="Export to Notion or Slack"
+                      >
+                        <ExternalLinkIcon />
+                      </button>
+                      {exportDropdownOpen && (
+                        <div className="export-dropdown">
+                          <button className="export-dropdown-item" onClick={handleExportNotion}>
+                            <span className="export-dropdown-icon">📄</span>
+                            Export to Notion
+                          </button>
+                          <button className="export-dropdown-item" onClick={handleExportSlack}>
+                            <span className="export-dropdown-icon">💬</span>
+                            Post to Slack
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className={`copy-btn diff-toggle-btn ${diffOpen ? 'diff-toggle-active' : ''}`}
+                      onClick={() => setDiffOpen(o => !o)}
+                      disabled={!refinedComplete || !submittedPrompt}
+                      title="Show word-level diff between original and refined"
+                    >
+                      Diff
+                    </button>
                     <button className="copy-btn" onClick={handleCopy} disabled={busy}>
                       {copied ? 'Copied' : 'Copy'}
                     </button>
@@ -4943,6 +5209,9 @@ function App() {
                   {displayImproved}
                   {streaming && <span className="caret" />}
                 </div>
+                {diffOpen && refinedComplete && submittedPrompt && (
+                  <PromptDiffPanel rough={submittedPrompt} improved={displayImproved} />
+                )}
               </div>
             )}
 

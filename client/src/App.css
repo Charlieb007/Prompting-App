@@ -1203,6 +1203,93 @@ button:disabled { cursor: not-allowed; }
 }
 .version-use-btn:hover { background: rgba(205,111,71,0.14); }
 
+/* ── Settings: integrations ──────────────────────────────── */
+.integration-section {
+  padding: 12px;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+
+.integration-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.integration-section-title {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+}
+
+.integration-docs-link {
+  font-size: 11px; color: var(--accent-text);
+  text-decoration: none;
+}
+.integration-docs-link:hover { text-decoration: underline; }
+
+.settings-field-label {
+  display: block;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px; margin-top: 8px;
+}
+.settings-field-label:first-of-type { margin-top: 0; }
+
+.settings-text-input {
+  display: block; width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.12s;
+  box-sizing: border-box;
+}
+.settings-text-input:focus { border-color: var(--accent); }
+.settings-text-input::placeholder { color: var(--text-tertiary); }
+
+/* ── Export dropdown ─────────────────────────────────────── */
+.export-dropdown-wrap {
+  position: relative;
+}
+
+.export-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: var(--bg-card);
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  z-index: 200;
+  overflow: hidden;
+  animation: fadeIn 0.12s ease;
+}
+
+.export-dropdown-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  background: transparent; border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+}
+.export-dropdown-item:hover { background: var(--bg-subtle); }
+
+.export-dropdown-icon { font-size: 14px; line-height: 1; }
+
+.icon-action.active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: rgba(205,111,71,0.28);
+}
+
 .icon-action.primary-action {
   background: var(--accent);
   color: white;
@@ -2293,6 +2380,77 @@ button:disabled { cursor: not-allowed; }
 
 .copy-btn:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text-primary); }
 .copy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Diff toggle button variant */
+.diff-toggle-btn.diff-toggle-active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: rgba(205,111,71,0.30);
+}
+
+/* ── Prompt diff panel ───────────────────────────────────── */
+.prompt-diff-panel {
+  margin-top: 10px;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  animation: fadeIn 0.15s ease;
+}
+
+.prompt-diff-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 6px;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+.prompt-diff-title {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  flex: 1;
+}
+
+.prompt-diff-stats {
+  display: flex; gap: 8px;
+}
+
+.diff-stat {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.diff-stat.removed {
+  background: rgba(239,68,68,0.1);
+  color: #ef4444;
+}
+.diff-stat.added {
+  background: rgba(34,197,94,0.1);
+  color: #16a34a;
+}
+
+.prompt-diff-body {
+  padding: 12px 14px;
+  font-size: 14px; line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.diff-token.diff-delete {
+  background: rgba(239,68,68,0.15);
+  color: #dc2626;
+  text-decoration: line-through;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diff-token.diff-insert {
+  background: rgba(34,197,94,0.15);
+  color: #16a34a;
+  border-radius: 2px;
+  padding: 0 1px;
+}
 
 .text-btn {
   background: transparent; border: none;
