@@ -21,6 +21,7 @@ import { streamRefinement, streamComparison, streamTest, streamRunPrompt } from 
 
 // Icons
 import {
+  FunnelLogo,
   SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
   UsageIcon, SendIcon, MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
   ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon, PencilIcon,
