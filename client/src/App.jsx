@@ -23,7 +23,7 @@ import { streamRefinement, streamComparison, streamTest, streamRunPrompt } from 
 import {
   SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
   UsageIcon, SendIcon, MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
-  ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon,
+  ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon, PencilIcon,
 } from './icons.jsx';
 
 // Components (extracted modules)
@@ -154,6 +154,11 @@ function App() {
   const [viewingVersionId, setViewingVersionId] = useState(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
+
+  // ── Inline edit of the refined prompt ─────────────────────
+  const [editingRefined, setEditingRefined] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const editTextareaRef = useRef(null);
 
   // ── Toast notifications ────────────────────────────────────
   const [toasts, setToasts] = useState([]);
@@ -403,6 +408,8 @@ function App() {
     setViewingVersionId(null);
     setVersionsOpen(false);
     setDiffOpen(false);
+    setEditingRefined(false);
+    setEditDraft('');
   }
 
   function loadFromHistory(entry) {
@@ -1471,6 +1478,40 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function handleStartEdit() {
+    if (!displayImproved || busy) return;
+    setEditDraft(displayImproved);
+    setEditingRefined(true);
+    setTimeout(() => { editTextareaRef.current?.focus(); }, 30);
+  }
+
+  function handleSaveEdit() {
+    const trimmed = editDraft.trim();
+    if (!trimmed) return;
+    const versionLabel = `v${promptVersions.length + 1} (edited)`;
+    const newVersion = {
+      id: makeId(),
+      label: versionLabel,
+      improved: trimmed,
+      changes,
+      scores,
+      model: primaryModel,
+      feedback: null,
+      ts: Date.now(),
+    };
+    setPromptVersions(prev => [...prev, newVersion]);
+    setImprovedPrompt(trimmed);
+    setViewingVersionId(null);
+    setEditingRefined(false);
+    setEditDraft('');
+    addToast(`Edit saved as ${versionLabel}`);
+  }
+
+  function handleCancelEdit() {
+    setEditingRefined(false);
+    setEditDraft('');
+  }
+
   function handleKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -1754,85 +1795,116 @@ function App() {
                     {streaming && <span className="streaming-pulse" />}
                   </span>
                   <div className="message-actions">
-                    {promptVersions.length > 1 && (
-                      <button
-                        className={`version-badge-btn ${versionsOpen ? 'open' : ''}`}
-                        onClick={() => setVersionsOpen(v => !v)}
-                        title={`${promptVersions.length} versions — click to browse`}
-                      >
-                        {viewingVersion ? viewingVersion.label : `v${promptVersions.length}`}
-                      </button>
-                    )}
-                    <button
-                      className={`icon-action ${isSaved ? 'saved' : ''}`}
-                      onClick={toggleSaveCurrent}
-                      disabled={!refinedComplete || busy}
-                      aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
-                      title={isSaved ? 'Remove from saved' : 'Save prompt'}
-                    >
-                      <StarIcon filled={isSaved} />
-                    </button>
-                    <button
-                      className="icon-action primary-action"
-                      onClick={openRunDrawerWithRefined}
-                      disabled={!canRunPrompt}
-                      aria-label="Run prompt"
-                      title="Run this refined prompt and chat with the model"
-                    >
-                      <PlayCircleIcon />
-                    </button>
-                    <button
-                      className="icon-action"
-                      onClick={openPDFExport}
-                      disabled={!canExportPDF}
-                      aria-label="Export to PDF"
-                      title="Export to PDF"
-                    >
-                      <PDFIcon />
-                    </button>
-                    <button
-                      className="icon-action"
-                      onClick={handleShare}
-                      disabled={!refinedComplete || busy}
-                      aria-label="Share prompt"
-                      title="Share this refined prompt"
-                    >
-                      <ShareIcon />
-                    </button>
-                    <div className="export-dropdown-wrap" ref={exportDropdownRef}>
-                      <button
-                        className={`icon-action ${exportDropdownOpen ? 'active' : ''}`}
-                        onClick={() => setExportDropdownOpen(o => !o)}
-                        disabled={!refinedComplete || busy}
-                        aria-label="Export to…"
-                        title="Export to Notion or Slack"
-                      >
-                        <ExternalLinkIcon />
-                      </button>
-                      {exportDropdownOpen && (
-                        <div className="export-dropdown">
-                          <button className="export-dropdown-item" onClick={handleExportNotion}>
-                            <span className="export-dropdown-icon">📄</span>
-                            Export to Notion
+                    {editingRefined ? (
+                      <>
+                        <button
+                          className="edit-save-btn"
+                          onClick={handleSaveEdit}
+                          disabled={!editDraft.trim()}
+                          title="Save edits (⌘↵)"
+                        >
+                          Save edits
+                        </button>
+                        <button
+                          className="copy-btn"
+                          onClick={handleCancelEdit}
+                          title="Discard edits (Esc)"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {promptVersions.length > 1 && (
+                          <button
+                            className={`version-badge-btn ${versionsOpen ? 'open' : ''}`}
+                            onClick={() => setVersionsOpen(v => !v)}
+                            title={`${promptVersions.length} versions — click to browse`}
+                          >
+                            {viewingVersion ? viewingVersion.label : `v${promptVersions.length}`}
                           </button>
-                          <button className="export-dropdown-item" onClick={handleExportSlack}>
-                            <span className="export-dropdown-icon">💬</span>
-                            Post to Slack
+                        )}
+                        <button
+                          className={`icon-action ${isSaved ? 'saved' : ''}`}
+                          onClick={toggleSaveCurrent}
+                          disabled={!refinedComplete || busy}
+                          aria-label={isSaved ? 'Remove from saved' : 'Save prompt'}
+                          title={isSaved ? 'Remove from saved' : 'Save prompt'}
+                        >
+                          <StarIcon filled={isSaved} />
+                        </button>
+                        <button
+                          className="icon-action primary-action"
+                          onClick={openRunDrawerWithRefined}
+                          disabled={!canRunPrompt}
+                          aria-label="Run prompt"
+                          title="Run this refined prompt and chat with the model"
+                        >
+                          <PlayCircleIcon />
+                        </button>
+                        <button
+                          className="icon-action"
+                          onClick={openPDFExport}
+                          disabled={!canExportPDF}
+                          aria-label="Export to PDF"
+                          title="Export to PDF"
+                        >
+                          <PDFIcon />
+                        </button>
+                        <button
+                          className="icon-action"
+                          onClick={handleShare}
+                          disabled={!refinedComplete || busy}
+                          aria-label="Share prompt"
+                          title="Share this refined prompt"
+                        >
+                          <ShareIcon />
+                        </button>
+                        <div className="export-dropdown-wrap" ref={exportDropdownRef}>
+                          <button
+                            className={`icon-action ${exportDropdownOpen ? 'active' : ''}`}
+                            onClick={() => setExportDropdownOpen(o => !o)}
+                            disabled={!refinedComplete || busy}
+                            aria-label="Export to…"
+                            title="Export to Notion or Slack"
+                          >
+                            <ExternalLinkIcon />
                           </button>
+                          {exportDropdownOpen && (
+                            <div className="export-dropdown">
+                              <button className="export-dropdown-item" onClick={handleExportNotion}>
+                                <span className="export-dropdown-icon">📄</span>
+                                Export to Notion
+                              </button>
+                              <button className="export-dropdown-item" onClick={handleExportSlack}>
+                                <span className="export-dropdown-icon">💬</span>
+                                Post to Slack
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <button
-                      className={`copy-btn diff-toggle-btn ${diffOpen ? 'diff-toggle-active' : ''}`}
-                      onClick={() => setDiffOpen(o => !o)}
-                      disabled={!refinedComplete || !submittedPrompt}
-                      title="Show word-level diff between original and refined"
-                    >
-                      Diff
-                    </button>
-                    <button className="copy-btn" onClick={handleCopy} disabled={busy}>
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
+                        <button
+                          className={`copy-btn diff-toggle-btn ${diffOpen ? 'diff-toggle-active' : ''}`}
+                          onClick={() => setDiffOpen(o => !o)}
+                          disabled={!refinedComplete || !submittedPrompt}
+                          title="Show word-level diff between original and refined"
+                        >
+                          Diff
+                        </button>
+                        <button
+                          className="icon-action"
+                          onClick={handleStartEdit}
+                          disabled={!refinedComplete || busy}
+                          aria-label="Edit refined prompt"
+                          title="Edit refined prompt"
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button className="copy-btn" onClick={handleCopy} disabled={busy}>
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 {versionsOpen && promptVersions.length > 1 && (
@@ -1868,11 +1940,26 @@ function App() {
                     ))}
                   </div>
                 )}
-                <div className="message-body">
-                  {displayImproved}
-                  {streaming && <span className="caret" />}
-                </div>
-                {diffOpen && refinedComplete && submittedPrompt && (
+                {editingRefined ? (
+                  <textarea
+                    ref={editTextareaRef}
+                    className="refined-edit-textarea"
+                    value={editDraft}
+                    onChange={e => setEditDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); }
+                      if (e.key === 'Escape') handleCancelEdit();
+                    }}
+                    spellCheck={false}
+                    aria-label="Edit refined prompt"
+                  />
+                ) : (
+                  <div className="message-body">
+                    {displayImproved}
+                    {streaming && <span className="caret" />}
+                  </div>
+                )}
+                {!editingRefined && diffOpen && refinedComplete && submittedPrompt && (
                   <PromptDiffPanel rough={submittedPrompt} improved={displayImproved} />
                 )}
               </div>

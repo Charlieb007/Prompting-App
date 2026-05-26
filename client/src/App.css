@@ -1104,6 +1104,47 @@ button:disabled { cursor: not-allowed; }
   white-space: pre-wrap;
 }
 
+/* ── Inline edit of refined prompt ───────────────────────── */
+.refined-edit-textarea {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--r-lg);
+  padding: 22px 26px;
+  font-size: 16.5px; line-height: 1.7;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  white-space: pre-wrap;
+  resize: vertical;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.refined-edit-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.edit-save-btn {
+  height: 28px;
+  padding: 0 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.edit-save-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.edit-save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .caret {
   display: inline-block;
   width: 2px; height: 16px;
