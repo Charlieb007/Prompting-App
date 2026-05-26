@@ -78,7 +78,7 @@
 
 body {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.55;
   color: var(--text-primary);
   background: var(--bg-canvas);
@@ -947,7 +947,7 @@ button:disabled { cursor: not-allowed; }
   border: 0.5px solid var(--border-faint);
   border-radius: var(--r-lg);
   padding: 14px 18px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -1020,7 +1020,7 @@ button:disabled { cursor: not-allowed; }
   border: 0.5px solid var(--border-faint);
   border-radius: var(--r-lg);
   padding: 22px 26px;
-  font-size: 15px; line-height: 1.7;
+  font-size: 16.5px; line-height: 1.7;
   color: var(--text-primary);
   white-space: pre-wrap;
 }
@@ -1070,7 +1070,7 @@ button:disabled { cursor: not-allowed; }
 
 .thinking-block {
   display: inline-flex; align-items: center; gap: 8px;
-  color: var(--text-secondary); font-size: 14px;
+  color: var(--text-secondary); font-size: 15px;
   padding: 14px 18px;
   background: var(--bg-surface);
   border: 0.5px solid var(--border-faint);
@@ -1147,8 +1147,8 @@ button:disabled { cursor: not-allowed; }
 }
 
 .changes-body { flex: 1; min-width: 0; }
-.changes-title { font-size: 13.5px; font-weight: 500; color: var(--text-primary); margin-bottom: 3px; letter-spacing: -0.005em; }
-.changes-explanation { font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); }
+.changes-title { font-size: 14.5px; font-weight: 500; color: var(--text-primary); margin-bottom: 3px; letter-spacing: -0.005em; }
+.changes-explanation { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
 
 .scores {
   margin-top: 16px;
