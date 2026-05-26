@@ -1920,51 +1920,53 @@ function HelpView() {
       <div className="drawer-head">
         <h3>Help & Docs</h3>
       </div>
-      <div className="help-nav">
-        {HELP_CONTENT.map((section) => (
-          <button
-            key={section.id}
-            className={`help-nav-item ${activeSection === section.id ? 'active' : ''}`}
-            onClick={() => setActiveSection(section.id)}
-          >
-            {section.title}
-          </button>
-        ))}
-      </div>
-      <div className="drawer-body help-body">
-        {HELP_CONTENT.filter((s) => s.id === activeSection).map((section) => (
-          <div key={section.id} className="help-section">
-            <h4>{section.title}</h4>
-            {section.body.map((block, i) => {
-              if (block.type === 'text') return <p key={i} className="help-text">{block.text}</p>;
-              if (block.type === 'step') {
-                return (
-                  <div key={i} className="help-step">
-                    <div className="help-step-num">{block.n}</div>
-                    <div className="help-step-body">
-                      <div className="help-step-title">{block.title}</div>
-                      <div className="help-step-text">{block.text}</div>
+      <div className="help-main">
+        <div className="help-nav">
+          {HELP_CONTENT.map((section) => (
+            <button
+              key={section.id}
+              className={`help-nav-item ${activeSection === section.id ? 'active' : ''}`}
+              onClick={() => setActiveSection(section.id)}
+            >
+              {section.title}
+            </button>
+          ))}
+        </div>
+        <div className="help-body">
+          {HELP_CONTENT.filter((s) => s.id === activeSection).map((section) => (
+            <div key={section.id} className="help-section">
+              <h4>{section.title}</h4>
+              {section.body.map((block, i) => {
+                if (block.type === 'text') return <p key={i} className="help-text">{block.text}</p>;
+                if (block.type === 'step') {
+                  return (
+                    <div key={i} className="help-step">
+                      <div className="help-step-num">{block.n}</div>
+                      <div className="help-step-body">
+                        <div className="help-step-title">{block.title}</div>
+                        <div className="help-step-text">{block.text}</div>
+                      </div>
                     </div>
-                  </div>
-                );
-              }
-              if (block.type === 'list') {
-                return (
-                  <ul key={i} className="help-list">
-                    {block.items.map((item, j) => (
-                      <li key={j}>
-                        <span className="help-list-label">{item.label}</span>
-                        <span className="help-list-text">{item.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-              if (block.type === 'note') return <div key={i} className="help-note">{block.text}</div>;
-              return null;
-            })}
-          </div>
-        ))}
+                  );
+                }
+                if (block.type === 'list') {
+                  return (
+                    <ul key={i} className="help-list">
+                      {block.items.map((item, j) => (
+                        <li key={j}>
+                          <span className="help-list-label">{item.label}</span>
+                          <span className="help-list-text">{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
+                if (block.type === 'note') return <div key={i} className="help-note">{block.text}</div>;
+                return null;
+              })}
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );

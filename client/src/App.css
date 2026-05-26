@@ -359,11 +359,23 @@ button:disabled { cursor: not-allowed; }
 .template-title { font-size: 13px; font-weight: 500; color: var(--text-primary); letter-spacing: -0.005em; }
 .template-description { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
 
+/* help-main fills remaining drawer space and splits into scrollable nav + content */
+.help-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .help-nav {
   display: flex; flex-direction: column;
   padding: 8px 8px 0; gap: 1px;
   border-bottom: 0.5px solid var(--border-faint);
   padding-bottom: 8px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  max-height: 260px; /* ~7-8 items visible; scroll for the rest */
 }
 
 .help-nav-item {
@@ -373,13 +385,20 @@ button:disabled { cursor: not-allowed; }
   color: var(--text-secondary);
   border-radius: 6px;
   font-family: var(--font-sans);
+  cursor: pointer;
   transition: all 0.12s ease;
+  flex-shrink: 0;
 }
 
 .help-nav-item:hover { background: var(--bg-subtle); color: var(--text-primary); }
 .help-nav-item.active { background: var(--accent-bg); color: var(--accent-text); }
 
-.help-body { padding: 16px 18px 24px; }
+.help-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+}
 
 .help-section h4 {
   font-family: var(--font-serif);
