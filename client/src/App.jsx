@@ -3458,6 +3458,16 @@ function App() {
     localStorage.removeItem(STORAGE_HISTORY);
   }
 
+  function deleteHistoryEntry(timestamp) {
+    const updated = history.filter(e => e.timestamp !== timestamp);
+    setHistory(updated);
+    if (updated.length === 0) {
+      localStorage.removeItem(STORAGE_HISTORY);
+    } else {
+      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+    }
+  }
+
   function clearCurrentRefinement() {
     setImprovedPrompt('');
     setChanges([]);
@@ -4519,21 +4529,29 @@ function App() {
         {/* Recent refinements — only shown when expanded and history exists */}
         {railExpanded && groupedRecents.length > 0 && (
           <div className="sidebar-recents">
-            <div className="sidebar-recents-head">Recent</div>
             {groupedRecents.map(group => (
               <div key={group.label}>
                 <div className="sidebar-recents-date">{group.label}</div>
                 {group.items.map(entry => (
-                  <button
-                    key={entry.timestamp}
-                    className="sidebar-recent-item"
-                    onClick={() => loadFromHistory(entry)}
-                    title={entry.rough}
-                  >
-                    {entry.rough.length > 40
-                      ? entry.rough.slice(0, 40).trimEnd() + '…'
-                      : entry.rough}
-                  </button>
+                  <div key={entry.timestamp} className="sidebar-recent-row">
+                    <button
+                      className="sidebar-recent-item"
+                      onClick={() => loadFromHistory(entry)}
+                      title={entry.rough}
+                    >
+                      {entry.rough.length > 38
+                        ? entry.rough.slice(0, 38).trimEnd() + '…'
+                        : entry.rough}
+                    </button>
+                    <button
+                      className="sidebar-recent-delete"
+                      onClick={(e) => { e.stopPropagation(); deleteHistoryEntry(entry.timestamp); }}
+                      title="Remove from history"
+                      aria-label="Remove from history"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             ))}
