@@ -15,6 +15,8 @@ import {
   PencilIcon,
   TrashIcon,
   SendIcon,
+  ExpandIcon,
+  CompressIcon,
 } from './icons.jsx';
 
 /* ── Helpers ──────────────────────────────────────────── */
@@ -399,8 +401,21 @@ export function RunDrawer({
   busy,
 }) {
   const [composer, setComposer] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
   const bodyRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // Escape key exits fullscreen; does not close the drawer.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape' && fullscreen) {
+        e.stopPropagation();
+        setFullscreen(false);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [fullscreen]);
 
   useEffect(() => {
     if (!bodyRef.current) return;
@@ -454,8 +469,12 @@ export function RunDrawer({
 
   return (
     <>
-      <div className="run-drawer-backdrop" onClick={onClose} />
-      <aside className="run-drawer" role="dialog" aria-label="Run prompt panel">
+      {!fullscreen && <div className="run-drawer-backdrop" onClick={onClose} />}
+      <aside
+        className={`run-drawer${fullscreen ? ' run-drawer--fullscreen' : ''}`}
+        role="dialog"
+        aria-label="Run prompt panel"
+      >
         <div className="run-drawer-head">
           {isListMode ? (
             <button
@@ -506,6 +525,15 @@ export function RunDrawer({
               title="New conversation"
             >
               <PlusIcon />
+            </button>
+            <button
+              type="button"
+              className="run-drawer-action-btn"
+              onClick={() => setFullscreen(v => !v)}
+              aria-label={fullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
+              title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand to fullscreen'}
+            >
+              {fullscreen ? <CompressIcon /> : <ExpandIcon />}
             </button>
             <button
               type="button"

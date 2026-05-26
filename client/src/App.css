@@ -3526,6 +3526,15 @@ button:disabled { cursor: not-allowed; }
   flex-direction: column;
   z-index: 95;
   animation: runDrawerSlideIn 0.22s ease;
+  transition: width 0.22s ease, left 0.22s ease, border-radius 0.22s ease;
+}
+
+.run-drawer--fullscreen {
+  left: 0;
+  width: 100vw;
+  max-width: 100vw;
+  border-left: none;
+  box-shadow: none;
 }
 
 @keyframes runDrawerSlideIn {
