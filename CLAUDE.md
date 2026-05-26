@@ -63,8 +63,17 @@ see Known Issues below).
 
 | File | Role |
 |---|---|
-| `server/index.js` | Entire backend (~420 lines). All API routes, system prompt, SSE helpers, response parser. |
-| `client/src/App.jsx` | Entire React frontend (~3900 lines). All UI, state, and async logic in one file. |
+| `server/index.js` | Entire backend (~650 lines). All API routes, system prompt, SSE helpers, response parser, Notion/Slack export routes, share routes. |
+| `client/src/App.jsx` | Root React component (~2100 lines). All app state, event handlers, and main layout. Imports from all the modules below. |
+| `client/src/constants.js` | All application constants (MODELS, PRICING, STORAGE_*, DEFAULT_SETTINGS, etc.). No imports. |
+| `client/src/utils.js` | Pure utility functions (formatTime, computeCost, computeWordDiff, etc.). Imports from constants only. |
+| `client/src/sse.js` | SSE streaming client functions (consumeSSE, streamRefinement, etc.). No React deps. |
+| `client/src/PDFPreviewModal.jsx` | PDF preview + download modal. Uses jsPDF + html2canvas. |
+| `client/src/LeftRailViews.jsx` | All left-rail drawer views: History, Saved, Templates, Usage, Analytics, Chain, Help, Settings, ImportExport. |
+| `client/src/ScoreComponents.jsx` | Skeletons, LintHintsPanel, RoughPromptMessage, ChangesPanel, RadarChart, ScoresPanel. |
+| `client/src/ComparisonPanels.jsx` | CompareInvite, ComparisonColumn, ComparisonStrip. |
+| `client/src/ABTestPanels.jsx` | ABTestInvite, ABTestPanel, ABTestResults, ABTestColumn, FollowUpPanel. |
+| `client/src/Modals.jsx` | PIIWarningModal, TemplateVariablesModal, ShareModal, PromptDiffPanel, ConfirmDialog, ToastList. |
 | `client/src/RunDrawer.jsx` | Slide-out conversation panel. Markdown rendering, syntax highlighting, conversation list. |
 | `client/src/lint.js` | Client-side prompt linter. 8 heuristic checks, no API call. |
 | `client/src/scan.js` | Client-side PII scanner. Regex patterns with Luhn/SSN validation. No API call. |
@@ -291,13 +300,7 @@ The modal offers: in-browser preview (`<iframe>`), open in new tab, download wit
    metadata counterparts) are filesystem artifacts. Safe to delete. They appear in `git status` as
    untracked and should be added to `.gitignore` or removed.
 
-4. **`App.jsx` monolith** — At ~3900 lines, the file is getting large. Natural split points when
-   the time comes: `ComparisonStrip`, `ABTestPanel`, `PDFPreviewModal`, and the left-rail drawer
-   views are all self-contained enough to extract.
-
-5. **Duplicate `"keywords"` key in `server/package.json`** — cosmetic/harmless, but should be cleaned up.
-
-6. **Pricing data hardcoded** — `PRICING` map in `App.jsx` and the disclaimer in `UsageView` reference
+4. **Pricing data hardcoded** — `PRICING` map in `constants.js` and the disclaimer in `UsageView` reference
    "May 2026" rates. These need manual updates when Anthropic changes pricing.
 
 ---
@@ -306,11 +309,13 @@ The modal offers: in-browser preview (`<iframe>`), open in new tab, download wit
 
 - **New API routes**: Add to `server/index.js`, use `setupSSE` + `sendEvent`, stream via SSE.
   Follow the `done` / `error` event convention. Validate inputs eagerly and return 400 before setting up SSE.
-- **New SSE consumers**: Add a typed wrapper function near `streamRefinement` in `App.jsx`.
-  Use `consumeSSE` as the base.
-- **New left-rail panels**: Add entry to `LEFT_RAIL_ITEMS`, add a `{activeView === 'x' && <XView />}`
-  block in the `<aside>`, create the view component near the other `*View` components.
-- **New icons**: Add SVG as a component to `icons.jsx`, export it, import in `App.jsx`.
+- **New SSE consumers**: Add a typed wrapper function to `sse.js` near `streamRefinement`.
+  Use `consumeSSE` as the base. Import it in `App.jsx`.
+- **New left-rail panels**: Add entry to `LEFT_RAIL_ITEMS` in `App.jsx`, add a `{activeView === 'x' && <XView />}`
+  block in the `<aside>`, create the view component in `LeftRailViews.jsx`.
+- **New icons**: Add SVG as a component to `icons.jsx`, export it, import where needed.
+- **New constants**: Add to `constants.js` and import where needed.
+- **New utility functions**: Add to `utils.js` (pure functions only) and import where needed.
 - **localStorage**: Always write through a setter function that updates both React state and
   `localStorage` in one call (e.g., `saveToHistory`, `persistSaved`, `recordUsage`).
 - **Abort safety**: Any new streaming operation needs an `AbortController` stored in a `useRef`,
