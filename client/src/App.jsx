@@ -3212,6 +3212,7 @@ function App() {
   const [saved, setSaved] = useState([]);
   const [currentSavedId, setCurrentSavedId] = useState(null);
   const [activeView, setActiveView] = useState(null);
+  const [railExpanded, setRailExpanded] = useState(true);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [usage, setUsage] = useState([]);
@@ -3488,6 +3489,7 @@ function App() {
     setCurrentSavedId(null);
     setAbTest(null);
     setAbTestOpen(false);
+    setActiveView(null); // navigate back to refinery view
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -3523,6 +3525,7 @@ function App() {
     setCurrentSavedId(entry.id);
     setAbTest(null);
     setAbTestOpen(false);
+    setActiveView(null); // navigate back to refinery view
     if (conversationRef.current) {
       conversationRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -3744,7 +3747,7 @@ function App() {
   }
 
   function toggleSidebar() {
-    setActiveView(activeView === null ? 'history' : null);
+    setRailExpanded(v => !v);
   }
 
   function handleImport(importedHistory, importedSaved) {
@@ -4415,7 +4418,6 @@ function App() {
   function closePDFExport() { setPdfModalOpen(false); }
 
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
-  const drawerOpen = activeView !== null;
   const isSaved = Boolean(currentSavedId);
   const busy = streaming || comparing || abTesting;
   const isRefinementInProgress = Boolean(submittedPrompt) && !error && !comparing;
@@ -4436,95 +4438,162 @@ function App() {
 
   const primaryCost = primaryUsage ? computeCost(primaryModel, primaryUsage) : null;
 
-  // Badge on the Conversations rail icon if a run is streaming and the drawer is closed.
+  // Badge on the Conversations icon if a run is streaming and the panel isn't open.
   const showConversationsBadge = running && !convoDrawerOpen;
+
+  // Group recent history by date for the sidebar recent list.
+  const groupedRecents = (() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const sevenDaysAgo = todayStart - 7 * 86400000;
+    const groups = [
+      { label: 'Today', items: [] },
+      { label: 'Yesterday', items: [] },
+      { label: 'Previous 7 days', items: [] },
+    ];
+    history.slice(0, 20).forEach(entry => {
+      const t = new Date(entry.timestamp);
+      const day = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+      if (day >= todayStart) groups[0].items.push(entry);
+      else if (day >= yesterdayStart) groups[1].items.push(entry);
+      else if (day >= sevenDaysAgo) groups[2].items.push(entry);
+    });
+    return groups.filter(g => g.items.length > 0);
+  })();
 
   return (
     <div className="shell">
-      <nav className="rail">
-        <button
-          className="rail-btn"
-          onClick={toggleSidebar}
-          aria-label={drawerOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-        >
-          <SidebarIcon />
-          <span className="rail-tooltip">
-            {drawerOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          </span>
-        </button>
-        <div className="rail-divider" />
-        {LEFT_RAIL_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isConversationsItem = item.id === 'conversations';
-          const isActive = isConversationsItem ? convoDrawerOpen : activeView === item.id;
-          const showBadge = isConversationsItem && showConversationsBadge;
-          return (
-            <button
-              key={item.id}
-              className={`rail-btn ${isActive ? 'active' : ''}`}
-              onClick={() => toggleView(item.id)}
-              aria-label={item.label}
-            >
-              <Icon />
-              {showBadge && <span className="rail-btn-badge" />}
-              <span className="rail-tooltip">{item.label}</span>
-            </button>
-          );
-        })}
-        <div className="rail-spacer" />
+      {/* ── Sidebar ─────────────────────────────────────────── */}
+      <nav className={`sidebar ${railExpanded ? 'expanded' : 'collapsed'}`}>
+
+        {/* Header: logo + collapse toggle */}
+        <div className="sidebar-header">
+          {railExpanded && (
+            <div className="sidebar-logo">
+              <div className="sidebar-logo-mark">
+                <FunnelLogo />
+              </div>
+              <div className="sidebar-logo-text">
+                <div className="sidebar-logo-name">Prompt Refinery</div>
+              </div>
+            </div>
+          )}
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label={railExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={railExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <SidebarIcon />
+          </button>
+        </div>
+
+        {/* Nav items */}
+        <div className="sidebar-nav">
+          {LEFT_RAIL_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isConversationsItem = item.id === 'conversations';
+            const isActive = isConversationsItem ? convoDrawerOpen : activeView === item.id;
+            const showBadge = isConversationsItem && showConversationsBadge;
+            return (
+              <button
+                key={item.id}
+                className={`sidebar-item ${isActive ? 'active' : ''}`}
+                onClick={() => toggleView(item.id)}
+                aria-label={item.label}
+                title={!railExpanded ? item.label : undefined}
+              >
+                <span className="sidebar-item-icon">
+                  <Icon />
+                  {showBadge && <span className="rail-btn-badge" />}
+                </span>
+                {railExpanded && (
+                  <span className="sidebar-item-label">{item.label}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Recent refinements — only shown when expanded and history exists */}
+        {railExpanded && groupedRecents.length > 0 && (
+          <div className="sidebar-recents">
+            <div className="sidebar-recents-head">Recent</div>
+            {groupedRecents.map(group => (
+              <div key={group.label}>
+                <div className="sidebar-recents-date">{group.label}</div>
+                {group.items.map(entry => (
+                  <button
+                    key={entry.timestamp}
+                    className="sidebar-recent-item"
+                    onClick={() => loadFromHistory(entry)}
+                    title={entry.rough}
+                  >
+                    {entry.rough.length > 40
+                      ? entry.rough.slice(0, 40).trimEnd() + '…'
+                      : entry.rough}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </nav>
 
-      <aside className={`drawer ${drawerOpen ? 'open' : 'closed'}`}>
-        <div className="drawer-inner">
-          <DrawerLogo />
-          {activeView === 'history' && (
-            <HistoryView
-              history={history}
-              onLoad={loadFromHistory}
-              onReRefine={reRefineFromHistory}
-              onClear={clearHistory}
-              onOpenImportExport={() => setImportExportOpen(true)}
-            />
-          )}
-          {activeView === 'saved' && (
-            <SavedView
-              saved={saved}
-              folders={folders}
-              onLoad={loadFromSaved}
-              onRename={renameSaved}
-              onRemove={removeSaved}
-              onMoveToFolder={moveSavedToFolder}
-              onAddFolder={addFolder}
-              onRenameFolder={renameFolder}
-              onDeleteFolder={deleteFolder}
-            />
-          )}
-          {activeView === 'templates' && <TemplatesView onSelect={loadFromTemplate} />}
-          {activeView === 'analytics' && <AnalyticsView history={history} />}
-          {activeView === 'chain' && (
-            <ChainView
-              chainSteps={chainSteps}
-              onUpdateSteps={updateChainSteps}
-              onRunChain={runChain}
-              chainRunning={chainRunning}
-              testModel={settings.testModel}
-            />
-          )}
-          {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
-          {activeView === 'help' && <HelpView />}
-          {activeView === 'settings' && (
-            <SettingsView
-              settings={settings}
-              onChange={updateSettings}
-              onReset={resetSettings}
-              speechSupported={speechSupported}
-            />
-          )}
-        </div>
-      </aside>
-
+      {/* ── Main area ───────────────────────────────────────── */}
       <main className="main">
-        <div className="conversation" ref={conversationRef}>
+        {activeView !== null ? (
+          /* Panel view: replaces refinery when a nav item is active */
+          <div className="panel-page">
+            {activeView === 'history' && (
+              <HistoryView
+                history={history}
+                onLoad={loadFromHistory}
+                onReRefine={reRefineFromHistory}
+                onClear={clearHistory}
+                onOpenImportExport={() => setImportExportOpen(true)}
+              />
+            )}
+            {activeView === 'saved' && (
+              <SavedView
+                saved={saved}
+                folders={folders}
+                onLoad={loadFromSaved}
+                onRename={renameSaved}
+                onRemove={removeSaved}
+                onMoveToFolder={moveSavedToFolder}
+                onAddFolder={addFolder}
+                onRenameFolder={renameFolder}
+                onDeleteFolder={deleteFolder}
+              />
+            )}
+            {activeView === 'templates' && <TemplatesView onSelect={loadFromTemplate} />}
+            {activeView === 'analytics' && <AnalyticsView history={history} />}
+            {activeView === 'chain' && (
+              <ChainView
+                chainSteps={chainSteps}
+                onUpdateSteps={updateChainSteps}
+                onRunChain={runChain}
+                chainRunning={chainRunning}
+                testModel={settings.testModel}
+              />
+            )}
+            {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
+            {activeView === 'help' && <HelpView />}
+            {activeView === 'settings' && (
+              <SettingsView
+                settings={settings}
+                onChange={updateSettings}
+                onReset={resetSettings}
+                speechSupported={speechSupported}
+              />
+            )}
+          </div>
+        ) : (
+          /* Refinery view: shown when no panel is active */
+          <>
+            <div className="conversation" ref={conversationRef}>
           <div className="conversation-inner">
             {showEmpty && (
               <div className="empty-state">
@@ -4785,6 +4854,8 @@ function App() {
             />
           )}
         </div>
+          </>
+        )}
       </main>
 
       {importExportOpen && (
