@@ -1912,6 +1912,58 @@ function buildShareMarkdown(rough, improved, changes) {
   return md;
 }
 
+/* ── Confirm Dialog ───────────────────────────────────────── */
+
+function ConfirmDialog({ message, confirmLabel = 'Delete', onConfirm, onCancel }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onCancel();
+      if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onConfirm, onCancel]);
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal confirm-dialog" onClick={e => e.stopPropagation()}>
+        <div className="confirm-body">
+          <p className="confirm-message">{message}</p>
+          <div className="confirm-actions">
+            <button className="text-btn" onClick={onCancel}>Cancel</button>
+            <button className="danger-btn" onClick={onConfirm}>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Toast notifications ──────────────────────────────────── */
+
+function ToastList({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+  return (
+    <div className="toast-list" aria-live="polite">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast toast-${t.type}`}>
+          <span className="toast-message">{t.message}</span>
+          <button className="toast-close" onClick={() => onDismiss(t.id)} aria-label="Dismiss">×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Quick-start prompts for empty state ──────────────────── */
+
+const QUICK_STARTS = [
+  { label: 'Draft an email',      prompt: 'Write an email to my team about the upcoming project deadline.',  category: 'writing' },
+  { label: 'Review code',         prompt: 'Review my React component for bugs, performance issues, and best practices.', category: 'code' },
+  { label: 'Explain a concept',   prompt: 'Explain how transformers work to someone with no ML background.', category: 'analysis' },
+  { label: 'Brainstorm ideas',    prompt: 'Brainstorm creative marketing ideas for a new mobile productivity app.', category: 'brainstorm' },
+];
+
 function HelpView() {
   const [activeSection, setActiveSection] = useState(HELP_CONTENT[0].id);
 
@@ -3278,6 +3330,22 @@ function App() {
   // so multi-pass is preserved even when those checks show a modal before executing.
   const pendingPassTotalRef = useRef(1);
 
+  // ── Toast notifications ────────────────────────────────────
+  const [toasts, setToasts] = useState([]);
+  function addToast(message, type = 'success') {
+    const id = makeId();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3200);
+  }
+  function dismissToast(id) { setToasts(prev => prev.filter(t => t.id !== id)); }
+
+  // ── Confirm dialog (replaces native confirm()) ─────────────
+  const [confirmState, setConfirmState] = useState(null);
+  function showConfirm(message, onConfirm, confirmLabel = 'Delete') {
+    setConfirmState({ message, onConfirm, confirmLabel });
+  }
+  function closeConfirm() { setConfirmState(null); }
+
   useEffect(() => {
     const savedHistory = localStorage.getItem(STORAGE_HISTORY);
     if (savedHistory) {
@@ -3412,6 +3480,24 @@ function App() {
     };
   }, []);
 
+  // ── Global keyboard shortcuts ──────────────────────────────
+  useEffect(() => {
+    function onKey(e) {
+      // Escape: close active panel (only when no modal is blocking)
+      if (e.key === 'Escape' && !confirmState && !piiFindings && !templateVarsOpen && !shareModalOpen && !pdfModalOpen && !importExportOpen) {
+        if (activeView !== null) { e.preventDefault(); setActiveView(null); }
+      }
+      // /: focus composer when not in an input or textarea
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setActiveView(null);
+        setTimeout(() => textareaRef.current?.focus(), 60);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeView, confirmState, piiFindings, templateVarsOpen, shareModalOpen, pdfModalOpen, importExportOpen]);
+
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
     setSettings(updated);
@@ -3419,9 +3505,11 @@ function App() {
   }
 
   function resetSettings() {
-    if (!confirm('Reset settings to defaults?')) return;
-    setSettings(DEFAULT_SETTINGS);
-    localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
+    showConfirm('Reset all settings to defaults?', () => {
+      setSettings(DEFAULT_SETTINGS);
+      localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
+      addToast('Settings reset to defaults');
+    }, 'Reset');
   }
 
   function recordUsage({ model, usage: u, latencyMs, kind }) {
@@ -3444,9 +3532,11 @@ function App() {
   }
 
   function clearUsage() {
-    if (!confirm('Reset all usage tracking? This cannot be undone.')) return;
-    setUsage([]);
-    localStorage.removeItem(STORAGE_USAGE);
+    showConfirm('Reset all usage data? This cannot be undone.', () => {
+      setUsage([]);
+      localStorage.removeItem(STORAGE_USAGE);
+      addToast('Usage data cleared');
+    }, 'Reset');
   }
 
   function saveToHistory(entry) {
@@ -3456,9 +3546,11 @@ function App() {
   }
 
   function clearHistory() {
-    if (!confirm('Clear all history?')) return;
-    setHistory([]);
-    localStorage.removeItem(STORAGE_HISTORY);
+    showConfirm('Clear all history? This cannot be undone.', () => {
+      setHistory([]);
+      localStorage.removeItem(STORAGE_HISTORY);
+      addToast('History cleared');
+    }, 'Clear');
   }
 
   function deleteHistoryEntry(timestamp) {
@@ -3581,10 +3673,12 @@ function App() {
   }
 
   function removeSaved(id) {
-    if (!confirm('Remove this saved prompt?')) return;
-    const next = saved.filter((s) => s.id !== id);
-    persistSaved(next);
-    if (currentSavedId === id) setCurrentSavedId(null);
+    showConfirm('Remove this saved prompt?', () => {
+      const next = saved.filter((s) => s.id !== id);
+      persistSaved(next);
+      if (currentSavedId === id) setCurrentSavedId(null);
+      addToast('Prompt removed from saved');
+    }, 'Remove');
   }
 
   /* ── Folder management ───────────────────────────────── */
@@ -3604,9 +3698,12 @@ function App() {
   }
 
   function deleteFolder(id) {
-    if (!confirm('Delete this folder? Prompts inside will move to Uncategorized.')) return;
-    persistFolders(folders.filter(f => f.id !== id));
-    persistSaved(saved.map(s => s.folderId === id ? { ...s, folderId: null } : s));
+    const folder = folders.find(f => f.id === id);
+    showConfirm(`Delete folder "${folder?.name || 'this folder'}"? Prompts inside will move to Uncategorized.`, () => {
+      persistFolders(folders.filter(f => f.id !== id));
+      persistSaved(saved.map(s => s.folderId === id ? { ...s, folderId: null } : s));
+      addToast('Folder deleted');
+    });
   }
 
   function moveSavedToFolder(entryId, folderId) {
@@ -3775,15 +3872,19 @@ function App() {
   }
 
   function handleImport(importedHistory, importedSaved) {
+    let count = 0;
     if (importedHistory.length > 0) {
       const next = [...history, ...importedHistory].slice(0, MAX_HISTORY);
       setHistory(next);
       localStorage.setItem(STORAGE_HISTORY, JSON.stringify(next));
+      count += importedHistory.length;
     }
     if (importedSaved.length > 0) {
       const next = [...saved, ...importedSaved];
       persistSaved(next);
+      count += importedSaved.length;
     }
+    if (count > 0) addToast(`Imported ${count} prompt${count !== 1 ? 's' : ''}`);
   }
 
   function dismissLintHint(hintId) {
@@ -4390,18 +4491,22 @@ function App() {
   }
 
   function removeConversation(id) {
-    if (!confirm('Delete this conversation? This cannot be undone.')) return;
-    if (currentConvo?.id === id) {
-      setCurrentConvo(null);
-    } else {
-      setConversations(conversations.filter((c) => c.id !== id));
-    }
+    showConfirm('Delete this conversation?', () => {
+      if (currentConvo?.id === id) {
+        setCurrentConvo(null);
+      } else {
+        setConversations(conversations.filter((c) => c.id !== id));
+      }
+      addToast('Conversation deleted');
+    });
   }
 
   function clearAllConversations() {
     if (conversations.length === 0) return;
-    if (!confirm(`Delete all ${conversations.length} past conversations? This cannot be undone. (Your current conversation will be kept.)`)) return;
-    setConversations([]);
+    showConfirm(`Delete all ${conversations.length} saved conversation${conversations.length !== 1 ? 's' : ''}? Your active conversation is kept.`, () => {
+      setConversations([]);
+      addToast('Conversations cleared');
+    }, 'Clear all');
   }
 
   function showConversationList() {
@@ -4648,7 +4753,25 @@ function App() {
             {showEmpty && (
               <div className="empty-state">
                 <h2>What can I help you refine?</h2>
-                <p>Type a rough prompt below, or pick a template from the sidebar.</p>
+                <p>Type a rough prompt below, or start from one of these:</p>
+                <div className="empty-state-starts">
+                  {QUICK_STARTS.map(qs => (
+                    <button
+                      key={qs.label}
+                      className="empty-state-start-btn"
+                      onClick={() => {
+                        setRoughPrompt(qs.prompt);
+                        setCategory(qs.category);
+                        setTimeout(() => textareaRef.current?.focus(), 50);
+                      }}
+                    >
+                      {qs.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="empty-state-hint">
+                  <kbd>⌘</kbd><kbd>↵</kbd> to refine &nbsp;·&nbsp; <kbd>/</kbd> to focus composer
+                </p>
               </div>
             )}
 
@@ -4983,6 +5106,17 @@ function App() {
           busy={running}
         />
       )}
+
+      {confirmState && (
+        <ConfirmDialog
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={() => { confirmState.onConfirm(); closeConfirm(); }}
+          onCancel={closeConfirm}
+        />
+      )}
+
+      <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

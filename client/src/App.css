@@ -2235,6 +2235,126 @@ button:disabled { cursor: not-allowed; }
 
 .text-btn:hover { color: var(--text-primary); background: var(--bg-subtle); }
 
+/* ── Danger button ─────────────────────────────────────────── */
+.danger-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 14px;
+  background: var(--error); color: white;
+  border: none; border-radius: var(--r-md);
+  font-size: 13px; font-weight: 500; font-family: var(--font-sans);
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.danger-btn:hover { opacity: 0.88; }
+
+/* ── Confirm dialog ─────────────────────────────────────────── */
+.confirm-dialog { max-width: 360px !important; }
+
+.confirm-body {
+  padding: 20px 20px 16px;
+}
+
+.confirm-message {
+  font-size: 14px; line-height: 1.55;
+  color: var(--text-primary);
+  margin: 0 0 18px;
+}
+
+.confirm-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+}
+
+/* ── Toast notifications ─────────────────────────────────────── */
+.toast-list {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 9px 16px;
+  border-radius: var(--r-lg);
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+  animation: toastIn 0.22s ease;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.toast-success {
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-soft);
+  color: var(--text-primary);
+}
+
+.toast-error {
+  background: var(--error-bg);
+  border: 0.5px solid var(--error-border);
+  color: var(--error);
+}
+
+.toast-message { flex: 1; }
+
+.toast-close {
+  background: transparent; border: none;
+  color: var(--text-tertiary);
+  font-size: 16px; line-height: 1;
+  cursor: pointer; padding: 0 2px;
+  transition: color 0.1s ease;
+}
+.toast-close:hover { color: var(--text-primary); }
+
+/* ── Enhanced empty state ────────────────────────────────────── */
+.empty-state-starts {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: center;
+  margin: 20px 0 18px;
+}
+
+.empty-state-start-btn {
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 13px; font-weight: 400;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.empty-state-start-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-soft);
+}
+
+.empty-state-hint {
+  font-size: 12px !important;
+  color: var(--text-tertiary) !important;
+  margin-top: 4px !important;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+
+kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 
 .history-item {
@@ -5039,4 +5159,46 @@ button:disabled { cursor: not-allowed; }
   font-size: 12px;
   color: var(--accent-text);
   font-style: italic;
+}
+
+/* ── Mobile responsive ────────────────────────────────────────
+   Breakpoint 1: ≤ 680px — tighten spacing, narrower sidebar
+   Breakpoint 2: ≤ 420px — collapse sidebar to icon-only by default
+   ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 680px) {
+  .sidebar.expanded { width: 200px; }
+
+  .conversation { padding: 20px 14px 10px; }
+  .conversation-inner { max-width: 100%; }
+
+  .composer-wrap { padding: 6px 14px 16px; }
+  .composer { border-radius: var(--r-lg); }
+
+  .panel-page { overflow-y: auto; }
+  .drawer-head { padding: 14px 16px 10px; }
+  .drawer-body { padding: 12px 14px 20px; }
+
+  .run-drawer { width: 100% !important; }
+
+  .empty-state h2 { font-size: 22px; }
+  .empty-state-starts { gap: 6px; }
+  .empty-state-start-btn { font-size: 12px; padding: 6px 12px; }
+}
+
+@media (max-width: 420px) {
+  /* On very small phones, the sidebar stays collapsed (icon-only, 52px). */
+  /* The JS default is already collapsed=true; nothing extra needed here. */
+  .sidebar.expanded { width: 180px; }
+  .sidebar-logo-name { display: none; }
+
+  .conversation { padding: 14px 10px 8px; }
+  .composer-wrap { padding: 4px 10px 12px; }
+
+  .message-body { font-size: 15px; }
+
+  .toast-list { bottom: 16px; left: 10px; right: 10px; transform: none; align-items: stretch; }
+  .toast { white-space: normal; border-radius: var(--r-md); }
+
+  .analytics-cards { grid-template-columns: repeat(2, 1fr); }
 }
