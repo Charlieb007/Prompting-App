@@ -3330,6 +3330,13 @@ function App() {
   // so multi-pass is preserved even when those checks show a modal before executing.
   const pendingPassTotalRef = useRef(1);
 
+  // ── Prompt versioning ─────────────────────────────────────
+  // Tracks all refined outputs for the current session so the user can
+  // flip between v1, v2, v3 etc. Resets on each fresh initial refinement.
+  const [promptVersions, setPromptVersions] = useState([]);
+  const [viewingVersionId, setViewingVersionId] = useState(null);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+
   // ── Toast notifications ────────────────────────────────────
   const [toasts, setToasts] = useState([]);
   function addToast(message, type = 'success') {
@@ -3574,6 +3581,9 @@ function App() {
     setCurrentSavedId(null);
     setAbTest(null);
     setAbTestOpen(false);
+    setPromptVersions([]);
+    setViewingVersionId(null);
+    setVersionsOpen(false);
   }
 
   function loadFromHistory(entry) {
@@ -3988,6 +3998,12 @@ function App() {
       setSubmittedPrompt(overridePrompt || roughPrompt);
       setSubmittedFeedback('');
       if (!overridePrompt) setRoughPrompt('');
+      // Fresh initial refinement (not a multi-pass continuation) — reset version history
+      if (passNum === 1) {
+        setPromptVersions([]);
+        setViewingVersionId(null);
+        setVersionsOpen(false);
+      }
     }
 
     setImprovedPrompt('');
@@ -4066,6 +4082,22 @@ function App() {
               latencyMs: accumulatedLatency,
               kind: feedback ? 'follow-up' : 'refinement',
             });
+            // Track as a named version (only on the final pass of multi-pass)
+            if (passNum === passTotal) {
+              setPromptVersions(prev => {
+                const n = prev.length + 1;
+                return [...prev.slice(-9), {
+                  id: makeId(),
+                  label: `v${n}`,
+                  improved: accumulatedRefined,
+                  changes: accumulatedChanges,
+                  scores: accumulatedScores,
+                  model: settings.model,
+                  feedback: feedback || null,
+                  ts: Date.now(),
+                }];
+              });
+            }
           }
         },
         onError: (msg) => { setError(msg); },
@@ -4552,6 +4584,12 @@ function App() {
   function closePDFExport() { setPdfModalOpen(false); }
 
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
+
+  // Versioning: when the user is browsing an older version, display its data instead of live state
+  const viewingVersion = viewingVersionId ? promptVersions.find(v => v.id === viewingVersionId) : null;
+  const displayImproved = viewingVersion ? viewingVersion.improved : improvedPrompt;
+  const displayChanges  = viewingVersion ? viewingVersion.changes  : changes;
+  const displayScores   = viewingVersion ? viewingVersion.scores   : scores;
   const isSaved = Boolean(currentSavedId);
   const busy = streaming || comparing || abTesting;
   const isRefinementInProgress = Boolean(submittedPrompt) && !error && !comparing;
@@ -4818,6 +4856,15 @@ function App() {
                     {streaming && <span className="streaming-pulse" />}
                   </span>
                   <div className="message-actions">
+                    {promptVersions.length > 1 && (
+                      <button
+                        className={`version-badge-btn ${versionsOpen ? 'open' : ''}`}
+                        onClick={() => setVersionsOpen(v => !v)}
+                        title={`${promptVersions.length} versions — click to browse`}
+                      >
+                        {viewingVersion ? viewingVersion.label : `v${promptVersions.length}`}
+                      </button>
+                    )}
                     <button
                       className={`icon-action ${isSaved ? 'saved' : ''}`}
                       onClick={toggleSaveCurrent}
@@ -4859,18 +4906,51 @@ function App() {
                     </button>
                   </div>
                 </div>
+                {versionsOpen && promptVersions.length > 1 && (
+                  <div className="versions-panel">
+                    <div className="versions-panel-head">Version history</div>
+                    {[...promptVersions].reverse().map(v => (
+                      <div
+                        key={v.id}
+                        className={`version-item ${viewingVersionId === v.id ? 'active' : ''}`}
+                        onClick={() => setViewingVersionId(id => id === v.id ? null : v.id)}
+                      >
+                        <span className="version-item-label">{v.label}</span>
+                        <span className="version-item-meta">
+                          {v.feedback ? 'follow-up' : 'initial'} · {modelShortName(v.model)} · {formatTime(v.ts)}
+                        </span>
+                        {viewingVersionId === v.id && (
+                          <button
+                            className="version-use-btn"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setImprovedPrompt(v.improved);
+                              setChanges(v.changes);
+                              setScores(v.scores);
+                              setPrimaryModel(v.model);
+                              setViewingVersionId(null);
+                              setVersionsOpen(false);
+                            }}
+                          >
+                            Use this version
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="message-body">
-                  {improvedPrompt}
+                  {displayImproved}
                   {streaming && <span className="caret" />}
                 </div>
               </div>
             )}
 
             {showChangesSkeleton && <ChangesSkeleton />}
-            {changes.length > 0 && <ChangesPanel changes={changes} />}
+            {displayChanges.length > 0 && <ChangesPanel changes={displayChanges} />}
 
             {showScoresSkeleton && <ScoresSkeleton />}
-            {scores && <ScoresPanel scores={scores} chartContainerRef={scoresChartRef} />}
+            {displayScores && <ScoresPanel scores={displayScores} chartContainerRef={scoresChartRef} />}
 
             {showABTestInvite && (
               <ABTestInvite disabled={busy} onOpen={openABTest} hasResults={hasABTestResults} />

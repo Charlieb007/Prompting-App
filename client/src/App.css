@@ -1135,6 +1135,74 @@ button:disabled { cursor: not-allowed; }
 .icon-action.saved:hover { background: var(--accent-bg); color: var(--accent-hover); }
 .icon-action svg { width: 14px; height: 14px; }
 
+/* ── Version badge button ─────────────────────────────────── */
+.version-badge-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.version-badge-btn:hover,
+.version-badge-btn.open {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: rgba(205,111,71,0.28);
+}
+
+/* ── Versions panel ────────────────────────────────────────── */
+.versions-panel {
+  margin: 8px 0;
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  animation: fadeIn 0.18s ease;
+}
+
+.versions-panel-head {
+  padding: 8px 12px 6px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+
+.version-item {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 0.5px solid var(--border-faint);
+  transition: background 0.12s ease;
+}
+.version-item:last-child { border-bottom: none; }
+.version-item:hover { background: var(--bg-surface); }
+.version-item.active { background: var(--accent-bg); }
+
+.version-item-label {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-primary);
+}
+
+.version-item-meta {
+  font-size: 11px; color: var(--text-tertiary);
+  flex: 1;
+}
+
+.version-use-btn {
+  font-size: 11px; font-weight: 500;
+  color: var(--accent-text);
+  background: transparent; border: none;
+  cursor: pointer; padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+.version-use-btn:hover { background: rgba(205,111,71,0.14); }
+
 .icon-action.primary-action {
   background: var(--accent);
   color: white;
