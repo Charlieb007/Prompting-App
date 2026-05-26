@@ -262,9 +262,6 @@ button:disabled { cursor: not-allowed; }
   flex: 1; height: 100%;
   display: flex; flex-direction: column;
   overflow: hidden;
-  max-width: 720px;
-  width: 100%;
-  border-right: 0.5px solid var(--border-faint);
 }
 
 .drawer-logo {

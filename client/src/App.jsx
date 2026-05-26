@@ -3212,7 +3212,7 @@ function App() {
   const [saved, setSaved] = useState([]);
   const [currentSavedId, setCurrentSavedId] = useState(null);
   const [activeView, setActiveView] = useState(null);
-  const [railExpanded, setRailExpanded] = useState(true);
+  const [railExpanded, setRailExpanded] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [usage, setUsage] = useState([]);
