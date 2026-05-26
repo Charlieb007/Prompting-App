@@ -271,6 +271,77 @@ button:disabled { cursor: not-allowed; }
   pointer-events: none;
 }
 
+/* ── Starred prompts in sidebar ──────────────────────────── */
+.sidebar-starred {
+  padding: 0 6px 2px;
+  border-top: 0.5px solid var(--border-soft);
+  margin-top: 4px;
+}
+
+.sidebar-starred-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.sidebar-starred-head svg {
+  width: 11px; height: 11px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.sidebar-starred-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-starred-item:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.sidebar-starred-item.active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.sidebar-starred-more {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  transition: color 0.12s;
+}
+
+.sidebar-starred-more:hover { color: var(--accent); }
+
 /* Recent refinements list */
 .sidebar-recents {
   flex: 1; min-height: 0;

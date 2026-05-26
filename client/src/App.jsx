@@ -1640,6 +1640,34 @@ function App() {
           })}
         </div>
 
+        {/* Starred prompts — shown when expanded and any saved prompts exist */}
+        {railExpanded && saved.length > 0 && (
+          <div className="sidebar-starred">
+            <div className="sidebar-starred-head">
+              <StarIcon filled={true} />
+              <span>Starred</span>
+            </div>
+            {saved.slice(0, 5).map(entry => {
+              const label = entry.name || entry.rough;
+              return (
+                <button
+                  key={entry.id}
+                  className={`sidebar-starred-item ${currentSavedId === entry.id ? 'active' : ''}`}
+                  onClick={() => loadFromSaved(entry)}
+                  title={entry.rough}
+                >
+                  {label.length > 36 ? label.slice(0, 36).trimEnd() + '…' : label}
+                </button>
+              );
+            })}
+            {saved.length > 5 && (
+              <button className="sidebar-starred-more" onClick={() => toggleView('saved')}>
+                +{saved.length - 5} more
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Recent refinements — only shown when expanded and history exists */}
         {railExpanded && groupedRecents.length > 0 && (
           <div className="sidebar-recents">
