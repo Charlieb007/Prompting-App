@@ -399,6 +399,10 @@ export function RunDrawer({
   onRemoveConversation,
   onClearAllConversations,
   busy,
+  summary,
+  summarising,
+  onSummarise,
+  onClearSummary,
 }) {
   const [composer, setComposer] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
@@ -514,6 +518,18 @@ export function RunDrawer({
             )}
           </div>
           <div className="run-drawer-actions">
+            {!isListMode && hasMessages && (
+              <button
+                type="button"
+                className={`run-drawer-action-btn ${summarising ? 'active' : ''}`}
+                onClick={summary ? onClearSummary : onSummarise}
+                disabled={busy || summarising}
+                aria-label={summary ? 'Clear summary' : 'Summarise conversation'}
+                title={summary ? 'Clear summary' : 'Summarise conversation'}
+              >
+                <span style={{ fontSize: 13 }}>∑</span>
+              </button>
+            )}
             <button
               type="button"
               className="run-drawer-action-btn"
@@ -558,6 +574,29 @@ export function RunDrawer({
         ) : (
           <>
             <div className="run-drawer-body" ref={bodyRef}>
+              {(summary || summarising) && (
+                <div className="run-summary-banner">
+                  <div className="run-summary-head">
+                    <span className="run-summary-label">∑ Summary</span>
+                    {summary && !summarising && (
+                      <button className="run-summary-close" onClick={onClearSummary} aria-label="Close summary">×</button>
+                    )}
+                  </div>
+                  {summarising && !summary ? (
+                    <div className="run-summary-thinking">
+                      <span className="thinking-dots">
+                        <span className="thinking-dot" /><span className="thinking-dot" /><span className="thinking-dot" />
+                      </span>
+                      Summarising…
+                    </div>
+                  ) : (
+                    <div className="run-summary-body">
+                      {summary}
+                      {summarising && <span className="caret" />}
+                    </div>
+                  )}
+                </div>
+              )}
               {!hasMessages && (
                 <div className="run-drawer-empty">
                   <strong>Start a new conversation</strong>

@@ -41,7 +41,7 @@ export const MAX_HISTORY       = 20;
 export const MAX_USAGE_RECORDS = 500;
 export const MAX_CONVERSATIONS = 50;
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_MODEL = 'claude-opus-4-7';
 
 export const MODELS = [
   { id: 'claude-opus-4-7',           name: 'Claude Opus 4.7',   shortName: 'Opus 4.7',   provider: 'Anthropic', description: 'Most capable. Best for complex prompts.',          available: true },

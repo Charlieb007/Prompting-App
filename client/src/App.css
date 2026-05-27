@@ -3913,7 +3913,7 @@ kbd {
   min-height: 280px;
   border: 0.5px solid var(--border-soft);
   border-radius: var(--r-md);
-  background: white;
+  background: var(--bg-surface);
 }
 
 .pdf-loading {
@@ -5499,6 +5499,109 @@ kbd {
   font-style: italic;
 }
 
+/* ── Sidebar recents search ───────────────────────────────── */
+.sidebar-recents-search-wrap {
+  position: relative;
+  display: flex; align-items: center;
+  margin: 4px 6px 6px;
+}
+.sidebar-recents-search {
+  width: 100%;
+  padding: 5px 22px 5px 8px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.12s;
+}
+.sidebar-recents-search::placeholder { color: var(--text-tertiary); }
+.sidebar-recents-search:focus { border-color: var(--accent); }
+.sidebar-recents-search-clear {
+  position: absolute; right: 4px;
+  background: none; border: none;
+  font-size: 13px; color: var(--text-tertiary);
+  cursor: pointer; padding: 2px 4px; line-height: 1;
+  border-radius: 3px; transition: color 0.12s;
+}
+.sidebar-recents-search-clear:hover { color: var(--text-primary); }
+.sidebar-recents-empty {
+  font-size: 12px; color: var(--text-tertiary);
+  padding: 6px 10px; font-style: italic;
+}
+
+/* ── Conversation summary banner ──────────────────────────── */
+.run-summary-banner {
+  margin: 12px 12px 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.run-summary-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-faint);
+}
+.run-summary-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+.run-summary-close {
+  background: none; border: none;
+  font-size: 15px; color: var(--text-tertiary);
+  cursor: pointer; padding: 1px 5px; line-height: 1;
+  border-radius: 3px; transition: color 0.12s;
+}
+.run-summary-close:hover { color: var(--text-primary); }
+.run-summary-body {
+  padding: 10px 14px;
+  font-size: 13px; line-height: 1.65;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+.run-summary-thinking {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px; color: var(--text-secondary); font-style: italic;
+}
+
+/* ── Score trend SVG chart ────────────────────────────────── */
+.score-trend-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-bottom: 8px;
+}
+.trend-grid-line {
+  stroke: var(--border-faint);
+  stroke-width: 1;
+}
+.trend-area {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+.trend-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trend-point {
+  fill: var(--accent);
+  stroke: var(--bg-surface);
+  stroke-width: 1.5;
+}
+.trend-axis-label {
+  font-size: 9px;
+  fill: var(--text-tertiary);
+  font-family: var(--font-sans);
+}
+
 /* ── Dark mode ────────────────────────────────────────────────
    Override all CSS custom properties under [data-theme="dark"].
    Every component uses these vars so no component-level overrides
@@ -5575,6 +5678,65 @@ kbd {
 :root[data-theme="dark"] code {
   background: var(--bg-subtle);
   color: var(--accent-text);
+}
+
+/* PDF preview iframe */
+:root[data-theme="dark"] .pdf-preview-iframe {
+  background: var(--bg-surface);
+}
+
+/* Diff tokens — keep semantic red/green but adjust brightness for dark */
+:root[data-theme="dark"] .diff-token.diff-delete {
+  background: rgba(239, 68, 68, 0.22);
+  color: #f87171;
+}
+:root[data-theme="dark"] .diff-token.diff-insert {
+  background: rgba(34, 197, 94, 0.20);
+  color: #4ade80;
+}
+:root[data-theme="dark"] .diff-stat.removed { color: #f87171; }
+:root[data-theme="dark"] .diff-stat.added   { color: #4ade80; }
+
+/* Lint hint severity colours in dark */
+:root[data-theme="dark"] .lint-hint-critical {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.28);
+}
+:root[data-theme="dark"] .lint-hint-warning {
+  background: rgba(212,160,23,0.10);
+  border-color: rgba(212,160,23,0.28);
+}
+
+/* Score lift green in dark */
+:root[data-theme="dark"] .scores-summary-lift,
+:root[data-theme="dark"] .scores-item-lift {
+  color: #4ade80;
+  background: rgba(34,197,94,0.15);
+}
+
+/* Compare col error */
+:root[data-theme="dark"] .compare-col-error-body {
+  color: #f87171;
+}
+
+/* Versions panel */
+:root[data-theme="dark"] .versions-panel {
+  background: var(--bg-subtle);
+  border-color: var(--border-soft);
+}
+
+/* Shortcut kbd chips */
+:root[data-theme="dark"] .shortcut-kbd {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+/* Analytics positive/negative bars */
+:root[data-theme="dark"] .analytics-bar-fill.positive { background: var(--accent); }
+:root[data-theme="dark"] .analytics-card.highlight {
+  background: rgba(224,126,82,0.14);
+  border-color: rgba(224,126,82,0.28);
 }
 
 /* ── Token counter in composer ────────────────────────────── */

@@ -441,6 +441,31 @@ export function TemplatesView({ onSelect }) {
 
 /* ── UsageView ───────────────────────────────────────────── */
 
+function downloadUsageCSV(usage) {
+  const header = ['Date', 'Time', 'Model', 'Kind', 'Input Tokens', 'Output Tokens', 'Cost (USD)', 'Latency (ms)'];
+  const rows = usage.map(r => {
+    const d = new Date(r.timestamp);
+    return [
+      d.toLocaleDateString(),
+      d.toLocaleTimeString(),
+      r.model || '',
+      r.kind || 'refinement',
+      r.inputTokens ?? 0,
+      r.outputTokens ?? 0,
+      r.costUSD != null ? r.costUSD.toFixed(6) : '0',
+      r.latencyMs ?? '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+  const csv = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `prompt-refinery-usage-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function UsageView({ usage, onClear }) {
   const stats = useMemo(() => {
     if (!usage || usage.length === 0) return null;
@@ -502,7 +527,10 @@ export function UsageView({ usage, onClear }) {
     <>
       <div className="drawer-head">
         <h3>Usage & cost</h3>
-        <button className="text-btn" onClick={onClear} title="Reset usage tracking">Reset</button>
+        <div className="drawer-head-actions">
+          <button className="text-btn" onClick={() => downloadUsageCSV(usage)} title="Export usage as CSV">Export CSV</button>
+          <button className="text-btn" onClick={onClear} title="Reset usage tracking">Reset</button>
+        </div>
       </div>
       <div className="drawer-body usage-body">
         <div className="usage-disclaimer">
@@ -564,6 +592,65 @@ export function UsageView({ usage, onClear }) {
         )}
       </div>
     </>
+  );
+}
+
+/* ── ScoreTrendChart ─────────────────────────────────────── */
+
+function ScoreTrendChart({ entries }) {
+  const W = 320, H = 110;
+  const PAD = { top: 12, right: 16, bottom: 28, left: 28 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const minScore = 0, maxScore = 5;
+  const n = entries.length;
+
+  function xPos(i) { return PAD.left + (i / (n - 1)) * chartW; }
+  function yPos(score) { return PAD.top + chartH - ((score - minScore) / (maxScore - minScore)) * chartH; }
+
+  const polyPoints = entries.map((e, i) => `${xPos(i)},${yPos(e.score)}`).join(' ');
+  const areaPoints = [
+    `${xPos(0)},${PAD.top + chartH}`,
+    ...entries.map((e, i) => `${xPos(i)},${yPos(e.score)}`),
+    `${xPos(n - 1)},${PAD.top + chartH}`,
+  ].join(' ');
+
+  const gridLines = [1, 2, 3, 4, 5];
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="score-trend-chart" aria-label="Score trend">
+      {/* Grid lines */}
+      {gridLines.map(v => (
+        <g key={v}>
+          <line
+            x1={PAD.left} y1={yPos(v)} x2={PAD.left + chartW} y2={yPos(v)}
+            className="trend-grid-line"
+          />
+          <text x={PAD.left - 4} y={yPos(v)} className="trend-axis-label" textAnchor="end" dominantBaseline="middle">{v}</text>
+        </g>
+      ))}
+
+      {/* Area fill */}
+      <polygon points={areaPoints} className="trend-area" />
+
+      {/* Line */}
+      <polyline points={polyPoints} className="trend-line" fill="none" />
+
+      {/* Data points + x-axis labels */}
+      {entries.map((e, i) => (
+        <g key={i}>
+          <circle cx={xPos(i)} cy={yPos(e.score)} r={3.5} className="trend-point"
+            title={`${new Date(e.ts).toLocaleDateString()}: ${e.score.toFixed(1)}`}
+          />
+          {(i === 0 || i === n - 1 || n <= 5) && (
+            <text x={xPos(i)} y={H - 4} className="trend-axis-label" textAnchor="middle">
+              {new Date(e.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </text>
+          )}
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -663,14 +750,7 @@ export function AnalyticsView({ history }) {
         {stats.trendEntries.length > 1 && (
           <>
             <div className="analytics-section-title">Refined score trend (last 10)</div>
-            <div className="usage-chart">
-              {stats.trendEntries.map((t, i) => (
-                <div key={i} className="usage-bar-wrap" title={`${new Date(t.ts).toLocaleDateString()}: ${t.score.toFixed(1)}`}>
-                  <div className="usage-bar" style={{ height: `${Math.max(4, (t.score / stats.maxTrend) * 100)}%` }} />
-                  <div className="usage-bar-label">{WEEKDAYS[new Date(t.ts).getDay()]}</div>
-                </div>
-              ))}
-            </div>
+            <ScoreTrendChart entries={stats.trendEntries} />
           </>
         )}
 

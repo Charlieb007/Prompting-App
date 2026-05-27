@@ -162,6 +162,14 @@ function App() {
   const [editDraft, setEditDraft] = useState('');
   const editTextareaRef = useRef(null);
 
+  // ── Sidebar recents search ─────────────────────────────────
+  const [sidebarQuery, setSidebarQuery] = useState('');
+
+  // ── Conversation summary ───────────────────────────────────
+  const [convoSummary, setConvoSummary] = useState('');
+  const [summarising, setSummarising] = useState(false);
+  const summaryAbortRef = useRef(null);
+
   // ── Keyboard shortcuts modal ───────────────────────────────
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -1458,6 +1466,7 @@ function App() {
     setConversations(conversations.filter((c) => c.id !== convo.id));
     setCurrentConvo({ ...convo, lastUsedAt: Date.now() });
     setPanelMode('conversation');
+    setConvoSummary('');
   }
 
   function renameConversation(id, newTitle) {
@@ -1508,12 +1517,51 @@ function App() {
   }
   function handleFollowUp(feedback) { runRefinement({ feedback }); }
 
+  async function handleSummariseConvo() {
+    if (!currentConvo?.messages?.length || summarising) return;
+    setSummarising(true);
+    setConvoSummary('');
+
+    const controller = new AbortController();
+    summaryAbortRef.current = controller;
+
+    // Build a transcript of the conversation to summarise
+    const transcript = currentConvo.messages
+      .filter(m => m.role !== 'system')
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n\n');
+
+    try {
+      await streamRunPrompt({
+        url: `${API_URL}/api/run-prompt`,
+        body: {
+          messages: [
+            {
+              role: 'user',
+              content: `Please summarise the following conversation in 3–5 concise bullet points, focusing on key topics discussed and outcomes reached:\n\n${transcript}`,
+            },
+          ],
+          model: settings.testModel,
+        },
+        onChunk: (text) => setConvoSummary(prev => prev + text),
+        onDone: () => {},
+        onError: (err) => setConvoSummary(`Error: ${err}`),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') setConvoSummary(`Error: ${err.message}`);
+    } finally {
+      setSummarising(false);
+    }
+  }
+
   function handleStop() {
     if (abortRef.current) abortRef.current.abort();
     if (compareAbortRef.current) compareAbortRef.current.abort();
     if (testAbortRef.current) testAbortRef.current.abort();
     if (chainAbortRef.current) chainAbortRef.current.abort();
     if (critiqueAbortRef.current) critiqueAbortRef.current.abort();
+    if (summaryAbortRef.current) summaryAbortRef.current.abort();
     setMultiPassCurrent(0);
   }
 
@@ -1638,7 +1686,9 @@ function App() {
       { label: 'Yesterday', items: [] },
       { label: 'Previous 7 days', items: [] },
     ];
+    const q = sidebarQuery.trim().toLowerCase();
     history.slice(0, 20).forEach(entry => {
+      if (q && !entry.rough.toLowerCase().includes(q) && !(entry.category || '').toLowerCase().includes(q)) return;
       const t = new Date(entry.timestamp);
       const day = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
       if (day >= todayStart) groups[0].items.push(entry);
@@ -1744,8 +1794,23 @@ function App() {
         )}
 
         {/* Recent refinements — only shown when expanded and history exists */}
-        {railExpanded && groupedRecents.length > 0 && (
+        {railExpanded && history.length > 0 && (
           <div className="sidebar-recents">
+            <div className="sidebar-recents-search-wrap">
+              <input
+                className="sidebar-recents-search"
+                type="text"
+                placeholder="Search…"
+                value={sidebarQuery}
+                onChange={e => setSidebarQuery(e.target.value)}
+              />
+              {sidebarQuery && (
+                <button className="sidebar-recents-search-clear" onClick={() => setSidebarQuery('')} aria-label="Clear">×</button>
+              )}
+            </div>
+            {groupedRecents.length === 0 && sidebarQuery && (
+              <div className="sidebar-recents-empty">No matches</div>
+            )}
             {groupedRecents.map(group => (
               <div key={group.label}>
                 <div className="sidebar-recents-date">{group.label}</div>
@@ -2361,6 +2426,10 @@ function App() {
           onRemoveConversation={removeConversation}
           onClearAllConversations={clearAllConversations}
           busy={running}
+          summary={convoSummary}
+          summarising={summarising}
+          onSummarise={handleSummariseConvo}
+          onClearSummary={() => setConvoSummary('')}
         />
       )}
 
