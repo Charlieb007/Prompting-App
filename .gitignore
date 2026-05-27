@@ -1,7 +1,9 @@
 node_modules/
 .env
+.env.local
 .DS_Store
 ._.DS_Store
 ._*
 dist/
 build/
+server/shares.json

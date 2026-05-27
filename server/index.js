@@ -2,13 +2,17 @@ import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import 'dotenv/config';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHARES_FILE = join(__dirname, 'shares.json');
+
+// DATA_DIR: use a persistent disk mount on Render, or fall back to __dirname for local dev.
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+try { mkdirSync(DATA_DIR, { recursive: true }); } catch { /* already exists */ }
+const SHARES_FILE = join(DATA_DIR, 'shares.json');
 
 function loadShares() {
   if (!existsSync(SHARES_FILE)) return {};
@@ -22,7 +26,22 @@ function saveShares(shares) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// CORS: in production restrict to the Vercel frontend URL(s).
+// Set ALLOWED_ORIGINS as a comma-separated list in your Render env vars.
+// e.g. ALLOWED_ORIGINS=https://your-app.vercel.app,https://custom-domain.com
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:5173', 'http://localhost:4173'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no Origin header (curl, Postman, browser extension)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin "${origin}" is not allowed.`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 
 const client = new Anthropic({
@@ -460,7 +479,9 @@ app.post('/api/share', (req, res) => {
   const shares = loadShares();
   shares[id] = { id, rough, improved, changes, scores, category, model, createdAt: Date.now() };
   saveShares(shares);
-  const url = `http://localhost:${PORT}/share/${id}`;
+  // RENDER_EXTERNAL_URL is set automatically by Render; APP_URL can be set manually as fallback.
+  const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || `http://localhost:${PORT}`;
+  const url = `${baseUrl}/share/${id}`;
   res.json({ id, url });
 });
 
@@ -621,7 +642,7 @@ app.post('/api/critique', async (req, res) => {
   const { prompt, model } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt is required.' });
 
-  const critiqueModel = model || DEFAULT_MODEL;
+  const critiqueModel = model || 'claude-opus-4-7';
 
   setupSSE(res);
 
@@ -643,7 +664,7 @@ Rules:
     let fullText = '';
     const startTime = Date.now();
 
-    const stream = await anthropic.messages.stream({
+    const stream = await client.messages.stream({
       model: critiqueModel,
       max_tokens: 512,
       system: systemPrompt,

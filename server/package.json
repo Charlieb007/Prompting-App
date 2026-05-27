@@ -7,8 +7,7 @@
     "dev": "nodemon index.js",
     "start": "node index.js"
   },
-  "keywords": [],  
-"keywords": [],
+  "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
