@@ -71,14 +71,14 @@ For follow-up refinements, the user gives you a previously-refined prompt and fe
 Be honest in scoring — a great rough prompt should score high. A bad refinement should score low. Don't pad numbers to seem helpful.`;
 }
 
-const REFINER_USER_TEMPLATE = (prompt, category) => `Category: ${category}
+const REFINER_USER_TEMPLATE = (prompt, category, customInstructions) => `Category: ${category}
 
 Rough prompt:
 ${prompt}
-
+${customInstructions ? `\nAdditional refinement instructions from the user:\n${customInstructions}\n` : ''}
 Refine this prompt and respond in the exact format specified.`;
 
-const FOLLOWUP_USER_TEMPLATE = (originalRough, previousRefined, feedback, category) => `Category: ${category}
+const FOLLOWUP_USER_TEMPLATE = (originalRough, previousRefined, feedback, category, customInstructions) => `Category: ${category}
 
 Original rough prompt:
 ${originalRough}
@@ -88,7 +88,7 @@ ${previousRefined}
 
 User feedback for further refinement:
 ${feedback}
-
+${customInstructions ? `\nAdditional refinement instructions from the user:\n${customInstructions}\n` : ''}
 Apply the feedback to produce a new refined version. Score against the previous refined version (use it as the "rough" baseline).`;
 
 /* ── Refiner stream parsing ────────────────────────────── */
@@ -125,7 +125,7 @@ function sendEvent(res, eventName, data) {
 /* ── /api/improve ─────────────────────────────────────── */
 
 app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions } = req.body;
+  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions, customInstructions } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required and must be a string.' });
@@ -139,8 +139,8 @@ app.post('/api/improve', async (req, res) => {
   const systemPrompt = buildSystemPrompt(dimensions);
 
   const userMessage = (previousRefined && feedback)
-    ? FOLLOWUP_USER_TEMPLATE(prompt, previousRefined, feedback, category)
-    : REFINER_USER_TEMPLATE(prompt, category);
+    ? FOLLOWUP_USER_TEMPLATE(prompt, previousRefined, feedback, category, customInstructions)
+    : REFINER_USER_TEMPLATE(prompt, category, customInstructions);
 
   const startTime = Date.now();
   let accumulatedText = '';

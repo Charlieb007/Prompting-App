@@ -132,6 +132,73 @@ export function computeWordDiff(oldText, newText) {
   return merged;
 }
 
+/**
+ * Heuristic prompt complexity score (1–5).
+ * Returns { level: 1-5, label, color }.
+ */
+export function computeComplexity(text) {
+  if (!text || !text.trim()) return { level: 0, label: '', color: '' };
+
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const hasBullets    = /^[\-\*•]\s/m.test(text);
+  const hasNumbered   = /^\d+[.)]\s/m.test(text);
+  const hasColon      = /:\s/.test(text);
+  const hasQuestion   = /\?/.test(text);
+  const hasFormat     = /\b(format|structure|bullet|list|table|paragraph|markdown|json|xml|heading|section)\b/i.test(text);
+  const hasAudience   = /\b(for|aimed at|audience|beginner|expert|developer|designer|student|manager)\b/i.test(text);
+  const hasConstraint = /\b(max|maximum|min|minimum|no more than|at least|only|avoid|exclude|without|must not)\b/i.test(text);
+  const hasExample    = /\b(example|e\.g\.|for instance|such as|like|sample)\b/i.test(text);
+  const hasStepByStep = /\bstep[- ]by[- ]step\b/i.test(text);
+
+  let score = 0;
+
+  // Word count contribution (0–3 pts)
+  if (words >= 100)    score += 3;
+  else if (words >= 60) score += 2.5;
+  else if (words >= 30) score += 2;
+  else if (words >= 15) score += 1;
+  else if (words >= 8)  score += 0.5;
+
+  // Structure contributions (+0.5 each, max 2 pts)
+  let structureBonus = 0;
+  if (hasBullets || hasNumbered) structureBonus += 0.5;
+  if (hasColon)      structureBonus += 0.3;
+  if (hasQuestion)   structureBonus += 0.2;
+  if (hasFormat)     structureBonus += 0.5;
+  if (hasAudience)   structureBonus += 0.4;
+  if (hasConstraint) structureBonus += 0.4;
+  if (hasExample)    structureBonus += 0.4;
+  if (hasStepByStep) structureBonus += 0.5;
+  score += Math.min(structureBonus, 2);
+
+  // Clamp to 1–5
+  const level = Math.min(5, Math.max(1, Math.round(score)));
+
+  const map = {
+    1: { label: 'Vague',    color: '#ef4444' },
+    2: { label: 'Simple',   color: '#f97316' },
+    3: { label: 'Moderate', color: '#eab308' },
+    4: { label: 'Detailed', color: '#22c55e' },
+    5: { label: 'Complex',  color: '#3b82f6' },
+  };
+
+  return { level, ...map[level] };
+}
+
+/** Generate a short conversation title from the first user message. */
+export function autoTitle(firstUserMessage) {
+  const LIMIT = 50;
+  if (!firstUserMessage) return 'Untitled conversation';
+  const text = firstUserMessage.trim();
+  if (text.length <= LIMIT) return text;
+  const truncated = text.slice(0, LIMIT);
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace > LIMIT * 0.7) {
+    return truncated.slice(0, lastSpace) + '…';
+  }
+  return truncated + '…';
+}
+
 export function buildShareMarkdown(rough, improved, changes) {
   let md = `# Refined Prompt\n\n`;
   md += `**Original:**\n\n${rough}\n\n`;

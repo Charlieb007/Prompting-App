@@ -18,24 +18,7 @@ import {
   ExpandIcon,
   CompressIcon,
 } from './icons.jsx';
-
-/* ── Helpers ──────────────────────────────────────────── */
-
-const CONVO_TITLE_LENGTH = 50;
-
-// Truncate first user message to make a conversation title.
-// Tries to cut at a word boundary if there's a reasonable one.
-export function autoTitle(firstUserMessage) {
-  if (!firstUserMessage) return 'Untitled conversation';
-  const text = firstUserMessage.trim();
-  if (text.length <= CONVO_TITLE_LENGTH) return text;
-  const truncated = text.slice(0, CONVO_TITLE_LENGTH);
-  const lastSpace = truncated.lastIndexOf(' ');
-  if (lastSpace > CONVO_TITLE_LENGTH * 0.7) {
-    return truncated.slice(0, lastSpace) + '…';
-  }
-  return truncated + '…';
-}
+import { autoTitle } from './utils.js';
 
 function formatTime(timestamp) {
   const diff = Date.now() - timestamp;

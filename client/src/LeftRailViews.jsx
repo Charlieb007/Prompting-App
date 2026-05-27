@@ -9,9 +9,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   FunnelLogo, FolderIcon, PencilIcon, TrashIcon, CloseIcon,
   CheckIcon, ChevronUpIcon, DownloadIcon, UploadIcon,
-  SearchIcon, PinIcon, MoonIcon, SunIcon,
+  SearchIcon, PinIcon, MoonIcon, SunIcon, BatchIcon,
 } from './icons.jsx';
-import { CATEGORIES, MODELS, PRICING, SCORE_DIMENSIONS } from './constants.js';
+import { API_URL, CATEGORIES, MODELS, PRICING, SCORE_DIMENSIONS } from './constants.js';
 import { formatTime, formatCost, formatLatency, modelShortName, makeId } from './utils.js';
 import { TEMPLATES } from './templates-content.js';
 import { HELP_CONTENT } from './help-content.js';
@@ -33,16 +33,82 @@ export function DrawerLogo() {
 
 /* ── HistoryView ─────────────────────────────────────────── */
 
-export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport, onTogglePin }) {
-  const [query, setQuery] = useState('');
+function HistoryEntryTags({ entry, onAdd, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState('');
+  const inputRef = useRef(null);
+  const tags = entry.tags || [];
 
-  const filtered = query.trim()
-    ? history.filter(e =>
-        e.rough.toLowerCase().includes(query.toLowerCase()) ||
-        (e.category || '').toLowerCase().includes(query.toLowerCase()) ||
-        (e.model || '').toLowerCase().includes(query.toLowerCase())
-      )
-    : history;
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function handleAdd(e) {
+    e.preventDefault();
+    const t = input.trim().toLowerCase().replace(/\s+/g, '-');
+    if (t) { onAdd(entry.timestamp, t); setInput(''); }
+    setEditing(false);
+  }
+
+  return (
+    <div className="history-tags-row">
+      {tags.map(t => (
+        <span key={t} className="history-tag">
+          {t}
+          <button
+            className="history-tag-remove"
+            onClick={() => onRemove(entry.timestamp, t)}
+            aria-label={`Remove tag ${t}`}
+          >×</button>
+        </span>
+      ))}
+      {editing ? (
+        <form className="history-tag-form" onSubmit={handleAdd}>
+          <input
+            ref={inputRef}
+            className="history-tag-input"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onBlur={handleAdd}
+            onKeyDown={e => e.key === 'Escape' && setEditing(false)}
+            placeholder="tag…"
+            maxLength={24}
+          />
+        </form>
+      ) : (
+        <button className="history-tag-add-btn" onClick={() => setEditing(true)} title="Add tag">+ tag</button>
+      )}
+    </div>
+  );
+}
+
+export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImportExport, onTogglePin, onAddTag, onRemoveTag }) {
+  const [query, setQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+
+  // Collect all tags across all entries
+  const allTags = useMemo(() => {
+    const set = new Set();
+    history.forEach(e => (e.tags || []).forEach(t => set.add(t)));
+    return [...set].sort();
+  }, [history]);
+
+  const filtered = useMemo(() => {
+    let list = history;
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter(e =>
+        e.rough.toLowerCase().includes(q) ||
+        (e.category || '').toLowerCase().includes(q) ||
+        (e.model || '').toLowerCase().includes(q) ||
+        (e.tags || []).some(t => t.includes(q))
+      );
+    }
+    if (tagFilter) {
+      list = list.filter(e => (e.tags || []).includes(tagFilter));
+    }
+    return list;
+  }, [history, query, tagFilter]);
 
   const pinned   = filtered.filter(e => e.pinned);
   const unpinned = filtered.filter(e => !e.pinned);
@@ -60,6 +126,9 @@ export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImport
         <button className="history-text-btn" onClick={() => onLoad(entry)} title="Load this refinement">
           {entry.rough}
         </button>
+        {(onAddTag || onRemoveTag) && (
+          <HistoryEntryTags entry={entry} onAdd={onAddTag || (() => {})} onRemove={onRemoveTag || (() => {})} />
+        )}
         <div className="history-actions">
           <button
             className={`history-pin-btn ${entry.pinned ? 'active' : ''}`}
@@ -91,23 +160,40 @@ export function HistoryView({ history, onLoad, onReRefine, onClear, onOpenImport
       </div>
       <div className="drawer-body">
         {history.length > 0 && (
-          <div className="drawer-search-wrap">
-            <span className="drawer-search-icon"><SearchIcon /></span>
-            <input
-              className="drawer-search-input"
-              type="text"
-              placeholder="Search history…"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-            />
-            {query && (
-              <button className="drawer-search-clear" onClick={() => setQuery('')} aria-label="Clear search">×</button>
+          <>
+            <div className="drawer-search-wrap">
+              <span className="drawer-search-icon"><SearchIcon /></span>
+              <input
+                className="drawer-search-input"
+                type="text"
+                placeholder="Search history…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+              />
+              {query && (
+                <button className="drawer-search-clear" onClick={() => setQuery('')} aria-label="Clear search">×</button>
+              )}
+            </div>
+            {allTags.length > 0 && (
+              <div className="history-tag-filter-row">
+                <button
+                  className={`history-tag-filter-chip ${!tagFilter ? 'active' : ''}`}
+                  onClick={() => setTagFilter('')}
+                >All</button>
+                {allTags.map(t => (
+                  <button
+                    key={t}
+                    className={`history-tag-filter-chip ${tagFilter === t ? 'active' : ''}`}
+                    onClick={() => setTagFilter(f => f === t ? '' : t)}
+                  >{t}</button>
+                ))}
+              </div>
             )}
-          </div>
+          </>
         )}
         {filtered.length === 0 ? (
           <div className="drawer-empty">
-            {query ? 'No matches found.' : 'Your refined prompts will appear here.'}
+            {query || tagFilter ? 'No matches found.' : 'Your refined prompts will appear here.'}
           </div>
         ) : (
           <ul className="history-list">
@@ -1105,6 +1191,28 @@ export function SettingsView({ settings, onChange, onReset, speechSupported }) {
         <div className="settings-divider" />
 
         <div className="settings-group">
+          <div className="settings-group-label">Custom refinement instructions</div>
+          <div className="settings-group-hint">
+            These instructions are appended to every refinement request. Use them to steer Claude's style — for example: "Always use a formal tone", "Prefer bullet points over paragraphs", "Keep prompts under 200 words". Leave blank to use defaults.
+          </div>
+          <textarea
+            className="settings-instructions-textarea"
+            placeholder="e.g. Always use a formal, professional tone and prefer numbered lists."
+            value={settings.customInstructions || ''}
+            onChange={e => onChange({ customInstructions: e.target.value })}
+            rows={4}
+            maxLength={1000}
+          />
+          {(settings.customInstructions || '').length > 0 && (
+            <div className="settings-instructions-count">
+              {(settings.customInstructions || '').length}/1000
+            </div>
+          )}
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-group">
           <div className="settings-group-label">Integrations</div>
           <div className="settings-group-hint">
             Export refined prompts directly to Notion or Slack. Credentials are stored only in your browser.
@@ -1235,6 +1343,204 @@ function ScoringDimensionsSettings({ settings, onChange }) {
         <button className="text-btn" style={{ marginTop: 8 }} onClick={() => setAdding(true)}>+ Add dimension</button>
       )}
     </div>
+  );
+}
+
+/* ── BatchView ───────────────────────────────────────────── */
+
+export function BatchView({ model, category, onSaveEntry }) {
+  const [prompts, setPrompts]   = useState(['', '']);
+  const [results, setResults]   = useState([]);   // [{id, prompt, status, output, error}]
+  const [running, setRunning]   = useState(false);
+  const [copied, setCopied]     = useState(null);
+  const abortRef = useRef(null);
+
+  function addRow()   { setPrompts(p => [...p, '']); }
+  function removeRow(i) { setPrompts(p => p.filter((_, idx) => idx !== i)); }
+  function updateRow(i, val) { setPrompts(p => p.map((v, idx) => idx === i ? val : v)); }
+
+  async function runBatch() {
+    const items = prompts.map((p, i) => ({ id: i, prompt: p.trim() })).filter(x => x.prompt);
+    if (!items.length) return;
+    setRunning(true);
+    abortRef.current = new AbortController();
+    setResults(items.map(x => ({ ...x, status: 'pending', output: '', error: '' })));
+
+    await Promise.allSettled(items.map(async ({ id, prompt }) => {
+      setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'running' } : r));
+      try {
+        const response = await fetch(`${API_URL}/api/improve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, category: category || 'general', model: model || 'claude-opus-4-7' }),
+          signal: abortRef.current.signal,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader  = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let refined = '';
+
+        // Read SSE stream, collect only the refined text chunks
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || '';
+          for (const msg of messages) {
+            const lines = msg.split('\n');
+            let eventName = '';
+            let dataLine  = '';
+            for (const line of lines) {
+              if (line.startsWith('event:')) eventName = line.slice(6).trim();
+              if (line.startsWith('data:'))  dataLine  = line.slice(5).trim();
+            }
+            if (!dataLine) continue;
+            try {
+              const payload = JSON.parse(dataLine);
+              if (eventName === 'refined-chunk') {
+                refined += payload.text || '';
+                setResults(prev => prev.map(r => r.id === id ? { ...r, output: refined } : r));
+              }
+              if (eventName === 'done') {
+                const entry = {
+                  rough: prompt, improved: refined, changes: [], scores: null,
+                  category: category || 'general', model: model || 'claude-opus-4-7',
+                  timestamp: Date.now(),
+                };
+                onSaveEntry?.(entry);
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+        setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'done' } : r));
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled', error: 'Cancelled' } : r));
+        } else {
+          setResults(prev => prev.map(r => r.id === id ? { ...r, status: 'error', error: err.message || 'Failed' } : r));
+        }
+      }
+    }));
+
+    setRunning(false);
+  }
+
+  function stopBatch() {
+    abortRef.current?.abort();
+    setRunning(false);
+  }
+
+  function copyResult(id) {
+    const r = results.find(x => x.id === id);
+    if (r?.output) {
+      navigator.clipboard.writeText(r.output).then(() => {
+        setCopied(id);
+        setTimeout(() => setCopied(null), 1800);
+      });
+    }
+  }
+
+  const activePrompts = prompts.filter(p => p.trim()).length;
+  const done = results.filter(r => r.status === 'done').length;
+  const total = results.length;
+
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Batch Refine</h3>
+        {running && (
+          <span className="batch-progress-label">{done}/{total} done</span>
+        )}
+      </div>
+      <div className="drawer-body">
+        <p className="settings-group-hint">
+          Refine multiple prompts in parallel. Each is processed simultaneously and saved to History.
+        </p>
+
+        <div className="batch-inputs">
+          {prompts.map((p, i) => (
+            <div key={i} className="batch-input-row">
+              <span className="batch-input-num">{i + 1}</span>
+              <textarea
+                className="batch-textarea"
+                placeholder={`Prompt ${i + 1}…`}
+                value={p}
+                onChange={e => updateRow(i, e.target.value)}
+                rows={3}
+                disabled={running}
+              />
+              {prompts.length > 1 && (
+                <button
+                  className="batch-remove-btn"
+                  onClick={() => removeRow(i)}
+                  disabled={running}
+                  aria-label="Remove prompt"
+                  title="Remove"
+                >×</button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="batch-controls">
+          <button
+            className="text-btn"
+            onClick={addRow}
+            disabled={running || prompts.length >= 10}
+          >+ Add prompt</button>
+          {running ? (
+            <button className="send-btn stop-btn" onClick={stopBatch}>Stop</button>
+          ) : (
+            <button
+              className="send-btn"
+              onClick={runBatch}
+              disabled={activePrompts === 0}
+            >
+              <BatchIcon />
+              Run {activePrompts > 0 ? `${activePrompts} ` : ''}prompts
+            </button>
+          )}
+        </div>
+
+        {results.length > 0 && (
+          <div className="batch-results">
+            <div className="batch-results-head">Results</div>
+            {results.map((r) => (
+              <div key={r.id} className={`batch-result-card batch-result-${r.status}`}>
+                <div className="batch-result-meta">
+                  <span className="batch-result-num">#{r.id + 1}</span>
+                  <span className="batch-result-prompt">{r.prompt.slice(0, 60)}{r.prompt.length > 60 ? '…' : ''}</span>
+                  <span className={`batch-result-status batch-status-${r.status}`}>
+                    {r.status === 'pending'   && '⏳ Pending'}
+                    {r.status === 'running'   && '⚡ Running…'}
+                    {r.status === 'done'      && '✓ Done'}
+                    {r.status === 'error'     && '✗ Error'}
+                    {r.status === 'cancelled' && '– Cancelled'}
+                  </span>
+                </div>
+                {r.error && <div className="batch-result-error">{r.error}</div>}
+                {r.output && (
+                  <>
+                    <div className="batch-result-output">{r.output}</div>
+                    <div className="batch-result-actions">
+                      <button
+                        className="history-action-btn"
+                        onClick={() => copyResult(r.id)}
+                      >
+                        {copied === r.id ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

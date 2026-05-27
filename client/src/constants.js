@@ -72,6 +72,7 @@ export const DEFAULT_SETTINGS = {
   notionToken: '',
   notionDatabaseId: '',
   slackWebhookUrl: '',
+  customInstructions: '',
 };
 
 export const QUICK_STARTS = [

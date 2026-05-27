@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import './App.css';
 import { lintPrompt } from './lint.js';
 import { scanForPII } from './scan.js';
-import { RunDrawer, autoTitle } from './RunDrawer.jsx';
+const RunDrawer = lazy(() => import('./RunDrawer.jsx').then(m => ({ default: m.RunDrawer })));
 
 // Constants and utilities (extracted modules)
 import {
@@ -15,7 +15,7 @@ import {
 import {
   formatTime, makeId, averageScore, modelShortName, computeCost, formatCost,
   formatLatency, getSpeechRecognition, defaultPDFFilename, sanitizeFilename,
-  extractVariables, fillVariables,
+  extractVariables, fillVariables, computeComplexity, autoTitle,
 } from './utils.js';
 import { streamRefinement, streamComparison, streamTest, streamRunPrompt, streamCritique } from './sse.js';
 
@@ -25,14 +25,14 @@ import {
   SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
   UsageIcon, SendIcon, MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
   ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon, PencilIcon,
-  KeyboardIcon, CritiqueIcon,
+  KeyboardIcon, CritiqueIcon, BatchIcon,
 } from './icons.jsx';
 
-// Components (extracted modules)
-import { PDFPreviewModal } from './PDFPreviewModal.jsx';
+// Components (extracted modules) — heavy ones are lazy-loaded for code splitting
+const PDFPreviewModal = lazy(() => import('./PDFPreviewModal.jsx').then(m => ({ default: m.PDFPreviewModal })));
 import {
   DrawerLogo, HistoryView, SavedView, TemplatesView, UsageView, AnalyticsView,
-  ChainView, HelpView, SettingsView, ImportExportModal,
+  ChainView, BatchView, HelpView, SettingsView, ImportExportModal,
 } from './LeftRailViews.jsx';
 import {
   PIIWarningModal, TemplateVariablesModal, ShareModal,
@@ -54,6 +54,7 @@ const LEFT_RAIL_ITEMS = [
   { id: 'templates',     label: 'Templates',             icon: TemplatesIcon      },
   { id: 'analytics',     label: 'Analytics',             icon: ChartIcon          },
   { id: 'chain',         label: 'Prompt Chain',          icon: ChainIcon          },
+  { id: 'batch',         label: 'Batch Refine',          icon: BatchIcon          },
   { id: 'usage',         label: 'Usage & cost',          icon: UsageIcon          },
   { id: 'help',          label: 'Help & Documentation',  icon: HelpIcon           },
   { id: 'settings',      label: 'Settings',              icon: SettingsIcon       },
@@ -406,6 +407,11 @@ function App() {
   }
 
   function saveToHistory(entry) {
+    // Deduplicate: skip if same rough + improved + model already in history
+    const isDup = history.some(
+      e => e.rough === entry.rough && e.improved === entry.improved && e.model === entry.model
+    );
+    if (isDup) return;
     const updated = [entry, ...history].slice(0, MAX_HISTORY);
     setHistory(updated);
     localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
@@ -440,6 +446,29 @@ function App() {
     ];
     setHistory(sorted);
     localStorage.setItem(STORAGE_HISTORY, JSON.stringify(sorted));
+  }
+
+  function addTagToHistory(timestamp, tag) {
+    const t = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!t) return;
+    const updated = history.map(e => {
+      if (e.timestamp !== timestamp) return e;
+      const tags = e.tags || [];
+      if (tags.includes(t)) return e;
+      return { ...e, tags: [...tags, t] };
+    });
+    setHistory(updated);
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+  }
+
+  function removeTagFromHistory(timestamp, tag) {
+    const updated = history.map(e =>
+      e.timestamp === timestamp
+        ? { ...e, tags: (e.tags || []).filter(t => t !== tag) }
+        : e
+    );
+    setHistory(updated);
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
   }
 
   function clearCurrentRefinement() {
@@ -994,6 +1023,7 @@ function App() {
           previousRefined: previousRefined || undefined,
           feedback: feedback || undefined,
           dimensions: activeDimensions.length !== SCORE_DIMENSIONS.length ? activeDimensions : undefined,
+          customInstructions: settings.customInstructions?.trim() || undefined,
         },
         signal: controller.signal,
         onChunk: (text) => {
@@ -1646,6 +1676,7 @@ function App() {
 
   const showEmpty = !improvedPrompt && !submittedPrompt && !loading && !error && !streaming;
   const estimatedTokens = roughPrompt.trim() ? Math.ceil(roughPrompt.length / 4) : 0;
+  const promptComplexity = computeComplexity(roughPrompt);
 
   // Versioning: when the user is browsing an older version, display its data instead of live state
   const viewingVersion = viewingVersionId ? promptVersions.find(v => v.id === viewingVersionId) : null;
@@ -1854,6 +1885,8 @@ function App() {
                 onClear={clearHistory}
                 onOpenImportExport={() => setImportExportOpen(true)}
                 onTogglePin={togglePinEntry}
+                onAddTag={addTagToHistory}
+                onRemoveTag={removeTagFromHistory}
               />
             )}
             {activeView === 'saved' && (
@@ -1878,6 +1911,13 @@ function App() {
                 onRunChain={runChain}
                 chainRunning={chainRunning}
                 testModel={settings.testModel}
+              />
+            )}
+            {activeView === 'batch' && (
+              <BatchView
+                model={settings.model}
+                category={category}
+                onSaveEntry={saveToHistory}
               />
             )}
             {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
@@ -2266,6 +2306,16 @@ function App() {
                 {!isRecording && estimatedTokens > 0 && (
                   <span className="token-count">~{estimatedTokens.toLocaleString()} tokens</span>
                 )}
+                {!isRecording && promptComplexity.level > 0 && (
+                  <span className="complexity-badge" style={{ '--complexity-color': promptComplexity.color }}>
+                    <span className="complexity-dots">
+                      {[1,2,3,4,5].map(i => (
+                        <span key={i} className={`complexity-dot ${i <= promptComplexity.level ? 'filled' : ''}`} />
+                      ))}
+                    </span>
+                    {promptComplexity.label}
+                  </span>
+                )}
               </span>
               <button
                 type="button"
@@ -2391,46 +2441,50 @@ function App() {
       )}
 
       {pdfModalOpen && (
-        <PDFPreviewModal
-          roughPrompt={submittedPrompt}
-          category={category}
-          refinedPrompt={improvedPrompt}
-          changes={changes}
-          scores={scores}
-          primaryModel={primaryModel}
-          primaryUsage={primaryUsage}
-          primaryLatencyMs={primaryLatencyMs}
-          abTest={abTest}
-          testModel={settings.testModel}
-          comparison={comparison}
-          scoresChartRef={scoresChartRef}
-          onClose={closePDFExport}
-        />
+        <Suspense fallback={<div className="modal-backdrop"><div className="modal" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:200}}>Loading PDF export…</div></div>}>
+          <PDFPreviewModal
+            roughPrompt={submittedPrompt}
+            category={category}
+            refinedPrompt={improvedPrompt}
+            changes={changes}
+            scores={scores}
+            primaryModel={primaryModel}
+            primaryUsage={primaryUsage}
+            primaryLatencyMs={primaryLatencyMs}
+            abTest={abTest}
+            testModel={settings.testModel}
+            comparison={comparison}
+            scoresChartRef={scoresChartRef}
+            onClose={closePDFExport}
+          />
+        </Suspense>
       )}
 
       {convoDrawerOpen && (
-        <RunDrawer
-          panelMode={panelMode}
-          conversation={currentConvo}
-          conversations={conversations}
-          testModel={settings.testModel}
-          modelShortName={modelShortName}
-          onClose={() => setConvoDrawerOpen(false)}
-          onSend={sendRunMessage}
-          onStop={stopRun}
-          onNewConversation={startNewRunConversation}
-          onShowList={showConversationList}
-          onShowConversation={showCurrentConversation}
-          onLoadConversation={loadConversation}
-          onRenameConversation={renameConversation}
-          onRemoveConversation={removeConversation}
-          onClearAllConversations={clearAllConversations}
-          busy={running}
-          summary={convoSummary}
-          summarising={summarising}
-          onSummarise={handleSummariseConvo}
-          onClearSummary={() => setConvoSummary('')}
-        />
+        <Suspense fallback={null}>
+          <RunDrawer
+            panelMode={panelMode}
+            conversation={currentConvo}
+            conversations={conversations}
+            testModel={settings.testModel}
+            modelShortName={modelShortName}
+            onClose={() => setConvoDrawerOpen(false)}
+            onSend={sendRunMessage}
+            onStop={stopRun}
+            onNewConversation={startNewRunConversation}
+            onShowList={showConversationList}
+            onShowConversation={showCurrentConversation}
+            onLoadConversation={loadConversation}
+            onRenameConversation={renameConversation}
+            onRemoveConversation={removeConversation}
+            onClearAllConversations={clearAllConversations}
+            busy={running}
+            summary={convoSummary}
+            summarising={summarising}
+            onSummarise={handleSummariseConvo}
+            onClearSummary={() => setConvoSummary('')}
+          />
+        </Suspense>
       )}
 
       {confirmState && (
