@@ -1,4 +1,4 @@
-# Prompt Refinery — CLAUDE.md
+# Prompt Refina — CLAUDE.md
 
 Project context for Claude Code and Claude.ai. Keep this file updated when architecture or patterns change.
 
@@ -6,12 +6,12 @@ Project context for Claude Code and Claude.ai. Keep this file updated when archi
 
 ## What This Project Does
 
-**Prompt Refinery** is a developer tool that transforms rough, vague AI prompts into well-structured ones using Claude. Users paste a rough prompt, choose a category, and receive a refined version with:
+**Prompt Refina** is a developer tool that transforms rough, vague AI prompts into well-structured ones using Claude. Users paste a rough prompt, choose a category, and receive a refined version with:
 - An explanation of every change made
 - A quality scorecard (5 dimensions, 1–5 scale, with radar charts)
 - Options to iterate (follow-up feedback), compare models, A/B test outputs, and run multi-turn conversations
 
-The product name throughout the UI is "Prompt Refinery". The repo folder is `prompt-improver` (historical name — do not rename).
+The product name throughout the UI is "Prompt Refina". The repo folder is `prompt-improver` (historical name — do not rename).
 
 ---
 
@@ -170,8 +170,8 @@ Key state groups:
 | `prompt-improver-saved` | Array of starred prompts | Unlimited |
 | `prompt-improver-settings` | Settings object | — |
 | `prompt-improver-usage` | Array of usage/cost records | 500 entries |
-| `prompt-refinery-current-convo` | Active conversation object | — |
-| `prompt-refinery-conversations` | Array of past conversations | 50 entries |
+| `prompt-refina-current-convo` | Active conversation object | — |
+| `prompt-refina-conversations` | Array of past conversations | 50 entries |
 
 ### AbortControllers
 Each async operation has its own ref: `abortRef` (refinement), `compareAbortRef` (comparison),

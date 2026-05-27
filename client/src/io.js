@@ -1,4 +1,4 @@
-// Export and import handlers for Prompt Refinery history and saved prompts.
+// Export and import handlers for Prompt Refina history and saved prompts.
 // Supports three formats: Markdown (.md), JSON (.json), CSV (.csv).
 // JSON is the only lossless format; Markdown is human-readable; CSV is
 // flattened for spreadsheets and loses nested data like comparisons.
@@ -142,7 +142,7 @@ function entryToMarkdown(entry, kind) {
 
 export function exportMarkdown(history, saved) {
   const lines = [];
-  lines.push(`# Prompt Refinery Export`);
+  lines.push(`# Prompt Refina Export`);
   lines.push('');
   lines.push(`Exported on ${new Date().toISOString()}`);
   lines.push('');
@@ -169,7 +169,7 @@ export function exportMarkdown(history, saved) {
   }
 
   downloadFile(
-    `prompt-refinery-export-${todayStamp()}.md`,
+    `prompt-refina-export-${todayStamp()}.md`,
     lines.join('\n'),
     'text/markdown;charset=utf-8'
   );
@@ -181,14 +181,14 @@ export function exportJSON(history, saved) {
   // The JSON payload version tag lets future Import logic detect format
   // versions and migrate if needed.
   const payload = {
-    format: 'prompt-refinery-export',
+    format: 'prompt-refina-export',
     version: 1,
     exportedAt: new Date().toISOString(),
     history,
     saved,
   };
   downloadFile(
-    `prompt-refinery-export-${todayStamp()}.json`,
+    `prompt-refina-export-${todayStamp()}.json`,
     JSON.stringify(payload, null, 2),
     'application/json;charset=utf-8'
   );
@@ -242,7 +242,7 @@ export function exportCSV(history, saved) {
   history.forEach((entry) => rows.push(rowFor(entry, 'history')));
 
   downloadFile(
-    `prompt-refinery-export-${todayStamp()}.csv`,
+    `prompt-refina-export-${todayStamp()}.csv`,
     rows.join('\n'),
     'text/csv;charset=utf-8'
   );
@@ -314,10 +314,10 @@ function parseJSONImport(text) {
     throw new Error('The JSON file is not valid. Check it for syntax errors and try again.');
   }
 
-  if (payload.format !== 'prompt-refinery-export') {
+  if (payload.format !== 'prompt-refina-export') {
     // Be permissive: if it has history/saved arrays, accept it anyway.
     if (!Array.isArray(payload.history) && !Array.isArray(payload.saved)) {
-      throw new Error('This JSON file does not look like a Prompt Refinery export.');
+      throw new Error('This JSON file does not look like a Prompt Refina export.');
     }
   }
 

@@ -4,7 +4,7 @@ export const HELP_CONTENT = [
     id: 'getting-started',
     title: 'Getting started',
     body: [
-      { type: 'text', text: 'Prompt Refinery transforms rough, vague AI prompts into well-structured ones. Paste or type a rough idea, pick a category, and submit — Claude rewrites it and shows you every change it made and why.' },
+      { type: 'text', text: 'Prompt Refina transforms rough, vague AI prompts into well-structured ones. Paste or type a rough idea, pick a category, and submit — Claude rewrites it and shows you every change it made and why.' },
       { type: 'step', n: 1, title: 'Type a rough prompt', text: 'Use the composer at the bottom of the screen. Don\'t try to be polished — vague, casual language is fine. "Help me write something for my landlord" is a good starting point.' },
       { type: 'step', n: 2, title: 'Pick a category', text: 'Choose General, Writing, Code, Analysis, or Brainstorm. The category shapes how the refiner approaches the rewrite — a Code prompt gets treated differently from a Writing one.' },
       { type: 'step', n: 3, title: 'Submit and watch it stream', text: 'Click the send button or press Cmd+Enter (Ctrl+Enter on Windows/Linux). The refined prompt streams in word by word. When it finishes, a "What changed" list and a quality scorecard appear below.' },
@@ -37,7 +37,7 @@ export const HELP_CONTENT = [
     id: 'template-variables',
     title: 'Template variables',
     body: [
-      { type: 'text', text: 'Template variables let you write reusable prompt templates with fill-in-the-blank slots. Put any placeholder name inside double curly braces, like {{audience}} or {{tone}}, and Prompt Refinery will ask you to fill each one in before sending.' },
+      { type: 'text', text: 'Template variables let you write reusable prompt templates with fill-in-the-blank slots. Put any placeholder name inside double curly braces, like {{audience}} or {{tone}}, and Prompt Refina will ask you to fill each one in before sending.' },
       { type: 'step', n: 1, title: 'Write a prompt with placeholders', text: 'In the composer, type something like: "Write a {{tone}} email to {{audience}} explaining {{topic}}." Use any name inside {{}} — spaces are allowed too.' },
       { type: 'step', n: 2, title: 'Click Refine', text: 'Instead of going straight to the API, a modal appears listing every unique variable you used with a text input for each.' },
       { type: 'step', n: 3, title: 'Fill in the values', text: 'Type the value for each placeholder — e.g., tone: "friendly but professional", audience: "my building manager", topic: "a broken radiator." Press Tab to move between fields.' },
@@ -67,7 +67,7 @@ export const HELP_CONTENT = [
     id: 'what-changed',
     title: 'The "What changed" panel',
     body: [
-      { type: 'text', text: 'After every refinement, a numbered list of changes appears below the refined prompt. This is the teaching layer of Prompt Refinery — each entry explains what was improved and why.' },
+      { type: 'text', text: 'After every refinement, a numbered list of changes appears below the refined prompt. This is the teaching layer of Prompt Refina — each entry explains what was improved and why.' },
       { type: 'text', text: 'Changes typically fall into categories like: added specificity, clarified the audience, specified output format, added constraints, introduced an example, shortened or restructured, or removed ambiguity.' },
       { type: 'text', text: 'Reading the changes carefully is the fastest way to get better at writing prompts. Over a few dozen refinements, you\'ll start to anticipate what the refiner will flag, and your rough prompts will improve naturally.' },
       { type: 'note', text: 'If a change surprises you or seems wrong for your context, use the follow-up panel to push back: "Don\'t use bullet points — keep it as prose." The refiner will adjust.' },
@@ -446,11 +446,11 @@ export const HELP_CONTENT = [
         items: [
           { label: 'Preview before downloading', text: 'Clicking the button opens a preview modal showing what the PDF will look like. Takes 1–2 seconds to generate. No download happens until you confirm.' },
           { label: 'Toggle sections', text: 'In the preview modal you can turn sections on or off — rough prompt, refined prompt, what changed, scores and radar charts, A/B test results, model comparison. The preview updates within 250ms of each toggle.' },
-          { label: 'Custom filename', text: 'Defaults to prompt-refinery-YYYY-MM-DD.pdf. Click the filename field to change it before downloading. Illegal filesystem characters are stripped automatically.' },
+          { label: 'Custom filename', text: 'Defaults to prompt-refina-YYYY-MM-DD.pdf. Click the filename field to change it before downloading. Illegal filesystem characters are stripped automatically.' },
           { label: 'Real text in the PDF', text: 'The prompt text is real, selectable, copyable text — not an image. Recipients can copy the refined prompt directly from the PDF. (Radar charts are rasterized images, but the prompt text is not.)' },
         ],
       },
-      { type: 'note', text: 'For archiving or re-importing, prefer Markdown or JSON export — they\'re smaller, searchable, and round-trip back into the app. PDF is specifically for sharing with people who won\'t open Prompt Refinery.' },
+      { type: 'note', text: 'For archiving or re-importing, prefer Markdown or JSON export — they\'re smaller, searchable, and round-trip back into the app. PDF is specifically for sharing with people who won\'t open Prompt Refina.' },
     ],
   },
   {
@@ -498,7 +498,7 @@ export const HELP_CONTENT = [
     id: 'integrations',
     title: 'Integrations (Notion & Slack)',
     body: [
-      { type: 'text', text: 'Prompt Refinery can export refined prompts directly to a Notion database or post them to a Slack channel via a webhook. Credentials are stored only in your browser — never sent anywhere except to Notion/Slack directly.' },
+      { type: 'text', text: 'Prompt Refina can export refined prompts directly to a Notion database or post them to a Slack channel via a webhook. Credentials are stored only in your browser — never sent anywhere except to Notion/Slack directly.' },
       {
         type: 'list',
         items: [
@@ -515,14 +515,14 @@ export const HELP_CONTENT = [
     id: 'pwa-install',
     title: 'Install as a desktop / mobile app',
     body: [
-      { type: 'text', text: 'Prompt Refinery is a Progressive Web App (PWA). You can install it as a standalone app that opens in its own window, without the browser address bar and tabs cluttering the screen.' },
+      { type: 'text', text: 'Prompt Refina is a Progressive Web App (PWA). You can install it as a standalone app that opens in its own window, without the browser address bar and tabs cluttering the screen.' },
       {
         type: 'list',
         items: [
           { label: 'Chrome / Edge (desktop)', text: 'Look for the install icon (⊕ or a download arrow) in the browser address bar when the app is open. Click it and confirm. The app appears in your Applications folder / Start Menu and can be pinned to the taskbar.' },
           { label: 'Safari (iPhone / iPad)', text: 'Tap the Share button (box with upward arrow) at the bottom of the screen, then choose "Add to Home Screen." The app icon appears on your home screen and launches in full-screen mode.' },
           { label: 'Chrome (Android)', text: 'Tap the three-dot menu and choose "Add to Home screen" or "Install app." The app icon appears on your home screen.' },
-          { label: 'Manual install', text: 'If the automatic prompt doesn\'t appear, look in the browser menu for "Install Prompt Refinery" or "Add to Home Screen."' },
+          { label: 'Manual install', text: 'If the automatic prompt doesn\'t appear, look in the browser menu for "Install Prompt Refina" or "Add to Home Screen."' },
         ],
       },
       { type: 'text', text: 'The installed app works identically to the browser version — same features, same localStorage, same backend connection requirement. It\'s just a more focused, distraction-free window.' },
@@ -535,7 +535,7 @@ export const HELP_CONTENT = [
     body: [
       { type: 'text', text: 'A lightweight Chromium extension is included in the project under the extension/ folder. Install it to refine prompts from any web page without switching tabs.' },
       { type: 'step', n: 1, title: 'Install the extension', text: 'Open chrome://extensions in Chrome or Chromium. Enable "Developer mode" (top right toggle). Click "Load unpacked" and select the extension/ folder from the project directory.' },
-      { type: 'step', n: 2, title: 'Use it', text: 'Click the Prompt Refinery icon in your browser toolbar. The popup mirrors the main composer: type a rough prompt, pick a category, submit. Results appear in the popup itself.' },
+      { type: 'step', n: 2, title: 'Use it', text: 'Click the Prompt Refina icon in your browser toolbar. The popup mirrors the main composer: type a rough prompt, pick a category, submit. Results appear in the popup itself.' },
       { type: 'step', n: 3, title: 'Backend must be running', text: 'The extension calls the same /api/improve endpoint as the main app. The backend server (cd server && npm run dev) must be running on port 3001.' },
       { type: 'note', text: 'The extension buffers the full SSE stream before displaying results, so there\'s no streaming animation — results appear all at once when complete. This is a known limitation of the extension\'s simpler architecture.' },
     ],

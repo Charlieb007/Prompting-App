@@ -1,5 +1,5 @@
 /**
- * Left-rail drawer views for Prompt Refinery.
+ * Left-rail drawer views for Prompt Refina.
  * Includes: DrawerLogo, HistoryView, SavedView, FolderSection, SavedItem,
  *           TemplatesView, UsageView, AnalyticsView, ChainView,
  *           HelpView, SettingsView, ScoringDimensionsSettings, ImportExportModal
@@ -24,7 +24,7 @@ export function DrawerLogo() {
     <div className="drawer-logo">
       <div className="drawer-logo-mark"><FunnelLogo /></div>
       <div className="drawer-logo-text">
-        <div className="drawer-logo-name">Prompt Refinery</div>
+        <div className="drawer-logo-name">Prompt Refina</div>
         <div className="drawer-logo-tagline">Well-structured prompts.</div>
       </div>
     </div>
@@ -547,7 +547,7 @@ function downloadUsageCSV(usage) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `prompt-refinery-usage-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `prompt-refina-usage-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

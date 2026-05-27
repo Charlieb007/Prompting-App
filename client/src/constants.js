@@ -1,5 +1,5 @@
 /**
- * Application-wide constants for Prompt Refinery.
+ * Application-wide constants for Prompt Refina.
  * No imports — pure data.
  */
 
@@ -32,10 +32,10 @@ export const STORAGE_HISTORY       = 'prompt-improver-history';
 export const STORAGE_SETTINGS      = 'prompt-improver-settings';
 export const STORAGE_SAVED         = 'prompt-improver-saved';
 export const STORAGE_USAGE         = 'prompt-improver-usage';
-export const STORAGE_CURRENT_CONVO = 'prompt-refinery-current-convo';
-export const STORAGE_CONVERSATIONS = 'prompt-refinery-conversations';
-export const STORAGE_FOLDERS       = 'prompt-refinery-folders';
-export const STORAGE_CHAIN         = 'prompt-refinery-chain';
+export const STORAGE_CURRENT_CONVO = 'prompt-refina-current-convo';
+export const STORAGE_CONVERSATIONS = 'prompt-refina-conversations';
+export const STORAGE_FOLDERS       = 'prompt-refina-folders';
+export const STORAGE_CHAIN         = 'prompt-refina-chain';
 
 export const MAX_HISTORY       = 20;
 export const MAX_USAGE_RECORDS = 500;

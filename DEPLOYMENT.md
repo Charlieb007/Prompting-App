@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Prompt Refinery deploys as two separate services:
+Prompt Refina deploys as two separate services:
 
 | Part | Host | Free? |
 |---|---|---|
@@ -21,7 +21,7 @@ Go to [render.com](https://render.com) and sign up (GitHub login recommended).
 
 | Field | Value |
 |---|---|
-| **Name** | `prompt-refinery-api` (or anything you like) |
+| **Name** | `prompt-refina-api` (or anything you like) |
 | **Region** | Oregon (US West) |
 | **Branch** | `main` |
 | **Root Directory** | `server` |
@@ -45,7 +45,7 @@ In the Render dashboard under **Disks**, click **Add Disk**:
 
 | Field | Value |
 |---|---|
-| **Name** | `prompt-refinery-data` |
+| **Name** | `prompt-refina-data` |
 | **Mount Path** | `/data` |
 | **Size** | 1 GB |
 
@@ -54,7 +54,7 @@ In the Render dashboard under **Disks**, click **Add Disk**:
 ### 1.5 — Deploy
 Click **Create Web Service**. Render builds and deploys automatically.  
 Once green, note your backend URL — it looks like:  
-`https://prompt-refinery-api.onrender.com`
+`https://prompt-refina-api.onrender.com`
 
 **Test it:** open `https://your-backend-url.onrender.com/api/health` in a browser. You should see:
 ```json
@@ -82,7 +82,7 @@ Under **Environment Variables**, add:
 
 ### 2.4 — Deploy
 Click **Deploy**. Vercel builds the Vite app and deploys it to a global CDN.  
-Your frontend URL will look like: `https://prompt-refinery-xyz.vercel.app`
+Your frontend URL will look like: `https://prompt-refina-xyz.vercel.app`
 
 ---
 
@@ -93,11 +93,11 @@ Go back to **Render → Environment** and add:
 
 | Key | Value |
 |---|---|
-| `ALLOWED_ORIGINS` | `https://prompt-refinery-xyz.vercel.app` |
+| `ALLOWED_ORIGINS` | `https://prompt-refina-xyz.vercel.app` |
 
 If you have a custom domain, add it too (comma-separated):
 ```
-https://prompt-refinery-xyz.vercel.app,https://prompts.yourdomain.com
+https://prompt-refina-xyz.vercel.app,https://prompts.yourdomain.com
 ```
 
 Click **Save Changes** — Render redeploys automatically.

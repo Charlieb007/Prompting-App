@@ -1,5 +1,5 @@
 /**
- * SSE streaming client utilities for Prompt Refinery.
+ * SSE streaming client utilities for Prompt Refina.
  * All functions are pure async — no React, no side-effects.
  */
 

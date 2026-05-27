@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Prompt Refinery",
+  "name": "Prompt Refina",
   "version": "0.1.0",
   "description": "Refine rough prompts into well-structured ones, without leaving your browser.",
   "action": {

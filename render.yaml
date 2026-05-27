@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: prompt-refinery-api
+    name: prompt-refina-api
     env: node
     region: oregon
     plan: free
@@ -15,7 +15,7 @@ services:
         sync: false
 
       # Your Vercel frontend URL (add after deploying frontend)
-      # e.g. https://prompt-refinery.vercel.app
+      # e.g. https://prompt-refina.vercel.app
       - key: ALLOWED_ORIGINS
         sync: false
 
@@ -29,6 +29,6 @@ services:
     # Persistent disk keeps shares.json across deploys and restarts.
     # Free plan: $1/month for 1 GB — remove this block if you don't need shares.
     disk:
-      name: prompt-refinery-data
+      name: prompt-refina-data
       mountPath: /data
       sizeGB: 1

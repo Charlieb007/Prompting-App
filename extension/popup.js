@@ -1,4 +1,4 @@
-// Prompt Refinery extension popup logic.
+// Prompt Refina extension popup logic.
 // Consumes the existing /api/improve SSE stream from the local backend,
 // collects all chunks, and displays the complete result when ready.
 // No streaming tokens shown in popup — kept simple for the small UI.
@@ -148,7 +148,7 @@ async function refine() {
     let message;
     if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
       message =
-        `Could not reach Prompt Refinery at ${API_URL}.\n\n` +
+        `Could not reach Prompt Refina at ${API_URL}.\n\n` +
         `Make sure your backend is running:\n` +
         `cd ~/prompt-improver/server && npm run dev`;
     } else {

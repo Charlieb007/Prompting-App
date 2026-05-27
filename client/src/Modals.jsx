@@ -1,5 +1,5 @@
 /**
- * Modal dialogs for Prompt Refinery:
+ * Modal dialogs for Prompt Refina:
  * PIIWarningModal, TemplateVariablesModal, ShareModal,
  * PromptDiffPanel, ConfirmDialog, ToastList.
  */

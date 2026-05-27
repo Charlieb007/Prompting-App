@@ -1,6 +1,6 @@
 {
-  "name": "Prompt Refinery",
-  "short_name": "Prompt Refinery",
+  "name": "Prompt Refina",
+  "short_name": "Prompt Refina",
   "description": "Transform rough, vague prompts into well-structured ones using Claude AI.",
   "start_url": "/",
   "display": "standalone",

@@ -1742,7 +1742,7 @@ function App() {
                 <FunnelLogo />
               </div>
               <div className="sidebar-logo-text">
-                <div className="sidebar-logo-name">Prompt Refinery</div>
+                <div className="sidebar-logo-name">Prompt Refina</div>
               </div>
             </div>
           )}

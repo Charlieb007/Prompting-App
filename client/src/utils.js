@@ -1,5 +1,5 @@
 /**
- * Pure utility functions for Prompt Refinery.
+ * Pure utility functions for Prompt Refina.
  * No React, no side-effects.
  */
 
@@ -58,11 +58,11 @@ export function getSpeechRecognition() {
 export function defaultPDFFilename() {
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
-  return `prompt-refinery-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.pdf`;
+  return `prompt-refina-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.pdf`;
 }
 
 export function sanitizeFilename(name) {
-  return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'prompt-refinery';
+  return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'prompt-refina';
 }
 
 export function extractVariables(text) {

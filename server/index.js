@@ -507,7 +507,7 @@ app.get('/share/:id', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Shared Prompt — Prompt Refinery</title>
+  <title>Shared Prompt — Prompt Refina</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1a1a2e; background: #f8f8fc; }
     h1 { font-size: 1.4rem; color: #6b48c0; }
@@ -520,7 +520,7 @@ app.get('/share/:id', (req, res) => {
 </head>
 <body>
   <h1>Shared Prompt</h1>
-  <p class="meta">Category: ${esc(entry.category)} · Model: ${esc(entry.model)} · Shared via <a href="http://localhost:${PORT}">Prompt Refinery</a></p>
+  <p class="meta">Category: ${esc(entry.category)} · Model: ${esc(entry.model)} · Shared via <a href="http://localhost:${PORT}">Prompt Refina</a></p>
   <h2>Original</h2>
   <div class="box">${esc(entry.rough)}</div>
   <h2>Refined</h2>
