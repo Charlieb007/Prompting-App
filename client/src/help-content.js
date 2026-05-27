@@ -23,10 +23,11 @@ export const HELP_CONTENT = [
         items: [
           { label: 'Category chips', text: 'The row of chips above the textarea (General, Writing, Code, Analysis, Brainstorm) changes how refinement is approached. Pick whichever fits best; you can change it on each submission.' },
           { label: 'Cmd+Enter to submit', text: 'Faster than clicking the button. Works from anywhere inside the textarea.' },
-          { label: 'Auto-resize', text: 'The textarea expands as you type, up to about 200px, then scrolls internally. You\'ll never need to scroll the whole page.' },
-          { label: 'Character count', text: 'Appears at the bottom-left once you start typing. No hard limit, but prompts over ~2,000 characters are often better split into smaller, focused requests.' },
+          { label: 'Token count', text: 'Appears at the bottom-left once you start typing. Shows an estimated token count (~characters ÷ 4). Useful for gauging API cost before submitting.' },
+          { label: 'Complexity score', text: 'A live 1–5 gauge (Vague → Simple → Moderate → Detailed → Complex) appears next to the token count as you type. It\'s computed locally from word count, structure, and keywords like "format:", "for:", and "no more than". Aim for Detailed or higher before submitting.' },
           { label: 'Stop button', text: 'While the model is streaming, the send button turns into a stop button. Click it at any time to abort the current refinement.' },
           { label: 'Mic button', text: 'Dictate your rough prompt using the microphone. Appears when voice input is enabled in Settings and your browser supports speech recognition.' },
+          { label: 'Keyboard shortcut button', text: 'The keyboard icon next to the mic opens the shortcuts cheat-sheet (also reachable via Shift+?).' },
         ],
       },
       { type: 'text', text: 'The composer also supports template variables — placeholders written as {{variable_name}} that get filled in interactively before the prompt is sent. See the Template variables section for details.' },
@@ -92,21 +93,63 @@ export const HELP_CONTENT = [
       { type: 'note', text: 'You can add or remove scoring dimensions in Settings → Scoring dimensions. Custom dimensions are described to Claude in the system prompt and scored alongside the built-in ones.' },
     ],
   },
+  {
+    id: 'version-history',
+    title: 'Version history & Diff view',
+    body: [
+      { type: 'text', text: 'Every follow-up refinement is saved as a version. The version panel lets you flip between v1, v2, v3 etc. without going to History — useful when you want to compare the progression of a single prompt across several iterations.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Opening the version panel', text: 'After at least one follow-up, a version indicator ("v2", "v3" etc.) appears in the refined prompt header. Click it to open the version list.' },
+          { label: 'Browsing versions', text: 'Each version shows its label, whether it was a follow-up or initial pass, the model used, and the timestamp. Click any version to preview its output in the main view.' },
+          { label: 'Using a version', text: 'Click "Use this version" to restore that version\'s output, changes, and scores as the active state. Useful if a later pass made things worse.' },
+          { label: 'Diff view', text: 'Click the "Diff" button in the refined prompt header to see a word-level comparison between your original rough prompt and the current refined output. Additions are highlighted green, removals red.' },
+        ],
+      },
+      { type: 'note', text: 'Version history is per-session — it resets when you start a fresh refinement. For permanent versioning, star prompts at each stage or export to JSON.' },
+    ],
+  },
+  {
+    id: 'inline-edit',
+    title: 'Editing the refined prompt',
+    body: [
+      { type: 'text', text: 'After a refinement completes, you can tweak the refined output directly without running another full refinement. This is faster when you only need a small manual change rather than a whole follow-up pass.' },
+      { type: 'step', n: 1, title: 'Click the pencil icon', text: 'The pencil (edit) icon is in the refined prompt header next to the Copy button. It becomes active after the refinement is fully done (not while still streaming).' },
+      { type: 'step', n: 2, title: 'Edit freely', text: 'The refined prompt becomes a textarea you can edit directly. Change words, restructure sentences, remove paragraphs — anything.' },
+      { type: 'step', n: 3, title: 'Save or cancel', text: 'Press Cmd+Enter (or Ctrl+Enter) to save, or Escape to discard. The "Save" and "Cancel" buttons also appear below the textarea.' },
+      { type: 'note', text: 'Inline edits update the displayed prompt but don\'t create a new history entry or change the scorecard (since Claude didn\'t see the edit). If you want the edit to trigger re-scoring, use it as a follow-up instead.' },
+    ],
+  },
+  {
+    id: 'ai-critique',
+    title: 'AI Critique',
+    body: [
+      { type: 'text', text: 'After a refinement, the AI Critique feature asks Claude to critically evaluate the refined prompt itself — pointing out remaining weaknesses, edge cases, or missed opportunities. Think of it as a second opinion from a prompt engineering expert.' },
+      { type: 'step', n: 1, title: 'Open the critique panel', text: 'Below the scorecard, click "Ask Claude to critique this prompt." A dashed-border invite button appears after a refinement completes.' },
+      { type: 'step', n: 2, title: 'Read the critique', text: 'Claude\'s critique streams in, covering aspects the main refinement might not have addressed — ambiguous phrasing, missing context, over-specification, assumptions, etc.' },
+      { type: 'step', n: 3, title: 'Act on the feedback', text: 'Use the critique findings as input for a follow-up: copy a concern from the critique and paste it into the follow-up text box, or use the inline edit to address a specific point directly.' },
+      { type: 'note', text: 'The critique uses the same refinement model selected in Settings. It\'s a separate API call — check the Usage panel if you\'re tracking spend.' },
+    ],
+  },
   // ─── Organisation ────────────────────────────────────────
   {
     id: 'history-and-saved',
     title: 'History & Saved prompts',
     body: [
-      { type: 'text', text: 'Every refinement is automatically added to History. History keeps the 20 most recent refinements and never requires you to do anything — it\'s always up to date.' },
+      { type: 'text', text: 'Every refinement is automatically added to History. History keeps the 20 most recent refinements, with automatic deduplication — if you refine the same prompt again with the same model and get the same result, it won\'t be added twice.' },
       {
         type: 'list',
         items: [
           { label: 'Load', text: 'Click any history entry to reload that rough prompt, category, and refined output into the main view. Everything is restored exactly as it was.' },
           { label: 'Re-refine', text: 'The "Re-refine" button next to each history entry loads the entry and immediately opens the follow-up panel, ready for you to add new feedback. Use this to pick up where you left off or take a refinement in a different direction.' },
+          { label: 'Pin to top', text: 'Click the pin icon on any history entry to pin it. Pinned entries stay at the top of the list and are never pushed out by new refinements, even after the rolling 20 fills up.' },
+          { label: 'Tags', text: 'Add tags to history entries to categorise and filter them. Click "+ tag" on any entry to type a tag (e.g., "work", "email", "client-x"). A tag filter bar appears above the list whenever tags exist — click any tag chip to filter the list to just that tag.' },
+          { label: 'Search', text: 'A search box at the top of the History panel filters entries by rough prompt text, category, model, or tag as you type.' },
           { label: 'Import / Export', text: 'The icon in the History panel header opens the export and import dialog. Back up your history or move it to another browser.' },
         ],
       },
-      { type: 'text', text: 'To keep a prompt permanently, click the star (☆) button on the refined prompt header. Starred prompts move to the Saved panel and never get trimmed.' },
+      { type: 'text', text: 'To keep a prompt permanently, click the star (☆) button on the refined prompt header. Starred prompts move to the Saved panel and never get trimmed. The sidebar also shows your 5 most recent starred prompts for quick access.' },
       {
         type: 'list',
         items: [
@@ -138,12 +181,12 @@ export const HELP_CONTENT = [
         items: [
           { label: 'Average score lift per dimension', text: 'For each scoring dimension, the average gain between your rough prompt score and the refined prompt score across all history. A high lift on "Format" means your rough prompts consistently lack format guidance.' },
           { label: 'Best improved dimension', text: 'The dimension with the highest average lift across your history. A quick signal for where the refiner adds the most value for your typical prompts.' },
-          { label: 'Score trend chart', text: 'A bar chart of your overall refined score (average across all dimensions) for the last 10 refinements, ordered by date. Watch this trend over time — it reflects how your prompting is improving.' },
+          { label: 'Score trend chart', text: 'A line-and-area chart of your overall refined score for the last 10 refinements, ordered by date. Watch this trend over time — a rising line means your prompting is genuinely improving.' },
           { label: 'Category breakdown', text: 'A horizontal bar chart showing how many refinements you\'ve done in each category. Useful for seeing whether you\'re over-using General when a more specific category would give better results.' },
           { label: 'Summary cards', text: 'Total refinements, average refined score, and average score lift — your overall numbers at a glance.' },
         ],
       },
-      { type: 'note', text: 'Analytics only shows data for refinements that have scores (those done with the scoring feature enabled). Imported entries may not have scores and won\'t appear in charts.' },
+      { type: 'note', text: 'Analytics only shows data for refinements that have scores. Imported entries may not have scores and won\'t appear in charts.' },
     ],
   },
   // ─── Models & comparison ─────────────────────────────────
@@ -174,7 +217,7 @@ export const HELP_CONTENT = [
       { type: 'note', text: 'The test runner model (set in Settings, independent from the refinement model) determines which model produces the test outputs. Use Haiku for fast/cheap tests, Opus for high-stakes ones.' },
     ],
   },
-  // ─── New power features ──────────────────────────────────
+  // ─── Power features ──────────────────────────────────────
   {
     id: 'multi-pass',
     title: 'Multi-pass refinement',
@@ -185,6 +228,26 @@ export const HELP_CONTENT = [
       { type: 'step', n: 3, title: 'Review the result', text: 'After all passes complete, the final refined output is shown. The scorecard reflects the cumulative improvement from all passes.' },
       { type: 'text', text: 'Multi-pass is most useful for prompts that are very rough or complex. For already-decent prompts, a single pass is usually enough — diminishing returns set in quickly after 2–3 passes.' },
       { type: 'note', text: 'Each pass is a separate API call with its own cost and latency. A 3-pass refinement costs approximately 3× a standard single refinement.' },
+    ],
+  },
+  {
+    id: 'batch-refine',
+    title: 'Batch refinement',
+    body: [
+      { type: 'text', text: 'The Batch Refine panel (grid icon in the sidebar) lets you refine multiple prompts in a single run. All prompts are sent to the API in parallel and results stream in simultaneously.' },
+      { type: 'step', n: 1, title: 'Open the Batch Refine panel', text: 'Click the grid icon in the left sidebar. You\'ll see two starter prompt text areas.' },
+      { type: 'step', n: 2, title: 'Add your prompts', text: 'Type a rough prompt in each text area. Click "+ Add prompt" to add more slots — up to 10 prompts per batch run.' },
+      { type: 'step', n: 3, title: 'Run the batch', text: 'Click "Run N prompts." All prompts are sent simultaneously. Each result card shows the status (⚡ Running, ✓ Done, ✗ Error) and the refined output streams in as it arrives.' },
+      { type: 'step', n: 4, title: 'Copy or save results', text: 'Each result card has a Copy button. Results are also automatically saved to History so you can access them from the History panel.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Parallel execution', text: 'All prompts run simultaneously — 5 prompts take roughly the same time as 1. Batch is ideal when you have a set of related prompts to improve at once.' },
+          { label: 'Stop mid-batch', text: 'Click the Stop button while a batch is running to abort remaining requests. Any prompts that already completed will retain their output.' },
+          { label: 'Category and model', text: 'The batch uses whatever category and model are currently active in the main view (shown in the composer area). Change them before running if needed.' },
+        ],
+      },
+      { type: 'note', text: 'Each prompt in a batch is a separate API call. 10 prompts at Opus pricing can add up quickly — check the Usage panel after large batch runs.' },
     ],
   },
   {
@@ -226,6 +289,26 @@ export const HELP_CONTENT = [
       { type: 'step', n: 3, title: 'Add a custom dimension', text: 'Fill in the "Label" field (e.g., "Creativity") and the "Description" field (e.g., "Whether the prompt encourages novel, unexpected, or imaginative responses"). Click Add.' },
       { type: 'step', n: 4, title: 'Refine as normal', text: 'Your custom dimensions are passed to Claude alongside the built-in ones. The scorecard will include your new dimension with a score and rationale.' },
       { type: 'note', text: 'Custom dimension descriptions should be clear and specific — Claude scores them based on the description you provide. Vague descriptions produce inconsistent scores.' },
+    ],
+  },
+  {
+    id: 'custom-instructions',
+    title: 'Custom refinement instructions',
+    body: [
+      { type: 'text', text: 'Custom refinement instructions let you bake in standing guidance that Claude follows on every refinement — without repeating yourself in every prompt. Set them once in Settings and they apply automatically to all future /api/improve calls.' },
+      { type: 'step', n: 1, title: 'Open Settings', text: 'Click the gear icon in the sidebar and scroll to "Custom refinement instructions."' },
+      { type: 'step', n: 2, title: 'Write your instructions', text: 'Type your standing guidance in the textarea. Examples: "Always use a formal, professional tone." "Prefer bullet points over prose paragraphs." "Keep prompts under 200 words." "Never use jargon — write for a non-technical audience." Up to 1,000 characters.' },
+      { type: 'step', n: 3, title: 'Refine as normal', text: 'Your instructions are appended to every refinement request (both first-pass and follow-ups). Claude reads them alongside the prompt and applies them throughout the rewrite.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Tone guidance', text: '"Always maintain a friendly but professional tone" or "Use a concise, technical tone suitable for engineers."' },
+          { label: 'Format preferences', text: '"Always structure output with numbered steps" or "Avoid bullet points — use flowing prose."' },
+          { label: 'Length constraints', text: '"Keep refined prompts under 150 words" or "Always include an expected output length hint."' },
+          { label: 'Domain context', text: '"This is for prompts that will be used in a legal research context" — gives Claude important background for every refinement.' },
+        ],
+      },
+      { type: 'note', text: 'Leave the field blank to use default refinement behaviour. Instructions are stored locally in your browser\'s settings and cleared when you reset Settings.' },
     ],
   },
   {
@@ -281,6 +364,7 @@ export const HELP_CONTENT = [
         type: 'list',
         items: [
           { label: 'Code syntax highlighting', text: 'Code blocks in Claude\'s responses are highlighted with the appropriate language and include a copy button.' },
+          { label: 'Conversation summary (∑)', text: 'Click the ∑ button in the conversation header to generate a 3–5 bullet summary of the current conversation thread. The summary appears as a banner at the top of the panel — useful for quickly recapping a long thread. Click the × to dismiss it.' },
           { label: 'Rename', text: 'Hover a conversation in the list view and click the pencil to give it a better title.' },
           { label: 'Delete', text: 'Click the trash icon next to a conversation to remove it permanently.' },
           { label: 'Model', text: 'The model used for conversations is the Test runner model, set in Settings.' },
@@ -315,6 +399,25 @@ export const HELP_CONTENT = [
       { type: 'note', text: 'Privacy note: Chrome routes speech recognition through Google\'s servers. Safari processes it on-device. Firefox doesn\'t support the Web Speech API at all. If on-device privacy matters, use Safari or type manually.' },
     ],
   },
+  {
+    id: 'keyboard-shortcuts',
+    title: 'Keyboard shortcuts',
+    body: [
+      { type: 'text', text: 'Most common actions have keyboard shortcuts. Press Shift+? at any time (or click the keyboard icon in the composer) to open the full shortcuts cheat-sheet.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Cmd/Ctrl+Enter', text: 'Submit / refine the current prompt. Works from anywhere in the composer textarea.' },
+          { label: '/ (forward slash)', text: 'Focus the composer textarea from anywhere on the page. Start typing immediately.' },
+          { label: 'Escape', text: 'Close the active modal, panel, or drawer. Also cancels inline editing.' },
+          { label: 'Shift+?', text: 'Open the keyboard shortcuts cheat-sheet.' },
+          { label: 'Cmd/Ctrl+K', text: 'Open the history panel (quick access to past refinements).' },
+          { label: 'Cmd/Ctrl+Enter in edit mode', text: 'Save the inline edit of a refined prompt.' },
+        ],
+      },
+      { type: 'note', text: 'The full cheat-sheet groups shortcuts by context: Composer, Panels & navigation, Edit mode, Follow-up, and Dialogs. Open it with Shift+? whenever you need a reminder.' },
+    ],
+  },
   // ─── Data & export ───────────────────────────────────────
   {
     id: 'export-import',
@@ -343,7 +446,7 @@ export const HELP_CONTENT = [
         items: [
           { label: 'Preview before downloading', text: 'Clicking the button opens a preview modal showing what the PDF will look like. Takes 1–2 seconds to generate. No download happens until you confirm.' },
           { label: 'Toggle sections', text: 'In the preview modal you can turn sections on or off — rough prompt, refined prompt, what changed, scores and radar charts, A/B test results, model comparison. The preview updates within 250ms of each toggle.' },
-          { label: 'Custom filename', text: 'Defaults to prompt-refinery-YYYY-MM-DD-HHMM.pdf. Click the filename field to change it before downloading. Illegal filesystem characters are stripped automatically.' },
+          { label: 'Custom filename', text: 'Defaults to prompt-refinery-YYYY-MM-DD.pdf. Click the filename field to change it before downloading. Illegal filesystem characters are stripped automatically.' },
           { label: 'Real text in the PDF', text: 'The prompt text is real, selectable, copyable text — not an image. Recipients can copy the refined prompt directly from the PDF. (Radar charts are rasterized images, but the prompt text is not.)' },
         ],
       },
@@ -361,30 +464,69 @@ export const HELP_CONTENT = [
           { label: 'Cost estimate', text: 'Calculated from Anthropic\'s published per-million-token pricing applied to your local token counts. Treat it as a useful approximation — the actual bill from Anthropic may differ slightly due to rounding and pricing updates.' },
           { label: 'Daily cost chart', text: 'A bar chart showing your spending day by day over the last week. Useful for spotting expensive sessions.' },
           { label: 'Latency', text: 'Average time from submit to final response. Useful for knowing which models feel slow at your current usage level.' },
+          { label: 'Export usage CSV', text: 'The "Export CSV" button in the Usage panel header downloads all tracked usage records as a spreadsheet — model, tokens, cost, latency, and timestamp for every API call.' },
           { label: 'Reset', text: 'Click "Reset usage" to clear all tracked data. The usage history rolls at 500 records; older records drop automatically.' },
         ],
       },
       { type: 'note', text: 'Each refinement, comparison column, A/B test call, and conversation message is tracked separately. Multi-model comparisons are the fastest way to accumulate cost — each model is a separate billable API call.' },
     ],
   },
-  // ─── Settings & extension ────────────────────────────────
+  // ─── Settings & integrations ─────────────────────────────
   {
     id: 'settings',
     title: 'Settings',
     body: [
-      { type: 'text', text: 'Open Settings from the gear icon in the sidebar.' },
+      { type: 'text', text: 'Open Settings from the gear icon in the sidebar. Settings are stored in your browser and persist across sessions.' },
       {
         type: 'list',
         items: [
+          { label: 'Dark mode', text: 'Toggle between light and dark themes. Switches immediately; the preference is saved and restored on next visit.' },
           { label: 'Prompt linter', text: 'Toggle the real-time hint panel below the composer on or off. Useful to disable if you\'re an experienced prompter who finds the hints distracting.' },
           { label: 'Privacy / PII scanner', text: 'Toggle the pre-send scan for credentials, financial data, and contact info. Disable only if you\'re confident your prompts never contain sensitive data.' },
           { label: 'Voice input', text: 'Toggle the microphone button. Auto-disabled if your browser doesn\'t support the Web Speech API.' },
-          { label: 'Refinement model', text: 'Which Claude model handles /api/improve (the main refinement). Sonnet 4.6 is the default — good balance of quality and cost. Opus 4.7 gives noticeably better results for complex prompts at higher cost.' },
+          { label: 'Refinement model', text: 'Which Claude model handles /api/improve (the main refinement). Opus 4.7 is the default — most capable, best for complex prompts. Sonnet 4.6 is a fast, lower-cost alternative.' },
           { label: 'Test runner model', text: 'Which model handles A/B tests, conversations, and prompt chains. Independent from the refinement model — mix and match as needed.' },
           { label: 'Scoring dimensions', text: 'Add custom dimensions or hide built-in ones. See the Custom scoring dimensions section for details.' },
+          { label: 'Custom refinement instructions', text: 'Standing guidance appended to every refinement. See the Custom refinement instructions section for details.' },
+          { label: 'Integrations', text: 'Notion and Slack credentials for direct export. See the Integrations section for details.' },
           { label: 'Reset', text: 'Reverts all settings to their defaults. Does not clear history, saved prompts, or usage data.' },
         ],
       },
+    ],
+  },
+  {
+    id: 'integrations',
+    title: 'Integrations (Notion & Slack)',
+    body: [
+      { type: 'text', text: 'Prompt Refinery can export refined prompts directly to a Notion database or post them to a Slack channel via a webhook. Credentials are stored only in your browser — never sent anywhere except to Notion/Slack directly.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Notion', text: 'Provide an Internal Integration Token and Database ID in Settings → Integrations. The export button in the refined prompt area sends the rough prompt, refined prompt, and change list as a new Notion database entry.' },
+          { label: 'Slack', text: 'Provide an Incoming Webhook URL in Settings → Integrations. The export button sends a formatted message to the configured Slack channel, including the rough prompt, refined prompt, and summary of changes.' },
+        ],
+      },
+      { type: 'step', n: 1, title: 'Notion setup', text: 'Go to notion.so/my-integrations, create a new internal integration, copy the token, and add the integration to your target database (Share → Invite → your integration). The database ID is the 32-character string in the database URL.' },
+      { type: 'step', n: 2, title: 'Slack setup', text: 'Go to api.slack.com/apps, create an app, enable Incoming Webhooks, activate for your workspace, and add a webhook to the channel you want. Copy the webhook URL (starts with https://hooks.slack.com/services/).' },
+      { type: 'note', text: 'Both integrations are one-way pushes — the app sends data out, but never reads from Notion or Slack. There\'s no sync or two-way connection.' },
+    ],
+  },
+  {
+    id: 'pwa-install',
+    title: 'Install as a desktop / mobile app',
+    body: [
+      { type: 'text', text: 'Prompt Refinery is a Progressive Web App (PWA). You can install it as a standalone app that opens in its own window, without the browser address bar and tabs cluttering the screen.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Chrome / Edge (desktop)', text: 'Look for the install icon (⊕ or a download arrow) in the browser address bar when the app is open. Click it and confirm. The app appears in your Applications folder / Start Menu and can be pinned to the taskbar.' },
+          { label: 'Safari (iPhone / iPad)', text: 'Tap the Share button (box with upward arrow) at the bottom of the screen, then choose "Add to Home Screen." The app icon appears on your home screen and launches in full-screen mode.' },
+          { label: 'Chrome (Android)', text: 'Tap the three-dot menu and choose "Add to Home screen" or "Install app." The app icon appears on your home screen.' },
+          { label: 'Manual install', text: 'If the automatic prompt doesn\'t appear, look in the browser menu for "Install Prompt Refinery" or "Add to Home Screen."' },
+        ],
+      },
+      { type: 'text', text: 'The installed app works identically to the browser version — same features, same localStorage, same backend connection requirement. It\'s just a more focused, distraction-free window.' },
+      { type: 'note', text: 'The backend server (cd server && npm run dev) still needs to be running for refinement to work, whether you\'re using the browser or the installed app.' },
     ],
   },
   {
