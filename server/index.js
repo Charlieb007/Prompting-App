@@ -382,8 +382,6 @@ app.post('/api/test-prompt', async (req, res) => {
 app.post('/api/run-prompt', async (req, res) => {
   const { messages, model = 'claude-sonnet-4-6' } = req.body;
 
-  console.log('[run-prompt] request received, messages:', messages?.length, 'model:', model);
-
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Messages array is required.' });
   }
@@ -444,7 +442,6 @@ app.post('/api/run-prompt', async (req, res) => {
       usage: { inputTokens, outputTokens },
       latencyMs,
     });
-    console.log('[run-prompt] done. chunks:', chunkCount, 'tokens in/out:', inputTokens, outputTokens, 'latency:', latencyMs + 'ms');
   } catch (err) {
     console.error('[run-prompt] ERROR:', err.message || err);
     let userMessage = 'Failed to run prompt.';
@@ -473,31 +470,49 @@ app.get('/api/health', (req, res) => {
 
 /* ── Share routes ─────────────────────────────────────── */
 
+// In-memory share cache: keeps shares available within a server session even
+// if the filesystem isn't persistent (Render free tier has no persistent disk).
+// Shares are also written to disk when DATA_DIR is configured, so they survive
+// restarts on plans that support persistent disks.
+const memoryShares = {};
+
+function getShares() {
+  const disk = loadShares();
+  return { ...disk, ...memoryShares };
+}
+
 app.post('/api/share', (req, res) => {
   const { rough, improved, changes, scores, category, model } = req.body;
   if (!rough || !improved) {
     return res.status(400).json({ error: 'rough and improved are required.' });
   }
   const id = randomBytes(4).toString('hex');
-  const shares = loadShares();
-  shares[id] = { id, rough, improved, changes, scores, category, model, createdAt: Date.now() };
-  saveShares(shares);
-  // RENDER_EXTERNAL_URL is set automatically by Render; APP_URL can be set manually as fallback.
+  const entry = { id, rough, improved, changes, scores, category, model, createdAt: Date.now() };
+
+  // Keep in memory (survives Render's ephemeral filesystem within a session)
+  memoryShares[id] = entry;
+
+  // Also try to persist to disk (works when DATA_DIR is set)
+  try {
+    const shares = loadShares();
+    shares[id] = entry;
+    saveShares(shares);
+  } catch { /* ignore if filesystem is read-only */ }
+
+  // RENDER_EXTERNAL_URL is set automatically by Render; APP_URL can be set manually.
   const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || `http://localhost:${PORT}`;
   const url = `${baseUrl}/share/${id}`;
   res.json({ id, url });
 });
 
 app.get('/api/share/:id', (req, res) => {
-  const shares = loadShares();
-  const entry = shares[req.params.id];
+  const entry = getShares()[req.params.id];
   if (!entry) return res.status(404).json({ error: 'Share not found.' });
   res.json(entry);
 });
 
 app.get('/share/:id', (req, res) => {
-  const shares = loadShares();
-  const entry = shares[req.params.id];
+  const entry = getShares()[req.params.id];
   if (!entry) return res.status(404).send('<h1>Not found</h1><p>This shared prompt does not exist.</p>');
 
   const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -523,7 +538,7 @@ app.get('/share/:id', (req, res) => {
 </head>
 <body>
   <h1>Shared Prompt</h1>
-  <p class="meta">Category: ${esc(entry.category)} · Model: ${esc(entry.model)} · Shared via <a href="http://localhost:${PORT}">Prompt Refina</a></p>
+  <p class="meta">Category: ${esc(entry.category)} · Model: ${esc(entry.model)} · Shared via <a href="${process.env.APP_FRONTEND_URL || 'https://promptrefina.vercel.app'}">Prompt Refina</a></p>
   <h2>Original</h2>
   <div class="box">${esc(entry.rough)}</div>
   <h2>Refined</h2>
