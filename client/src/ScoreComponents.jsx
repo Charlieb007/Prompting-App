@@ -87,7 +87,7 @@ export function ComparisonColumnSkeleton({ modelId }) {
 
 export function LintHintsPanel({ hints, dismissed, onDismiss }) {
   if (!hints || hints.length === 0) return null;
-  const visible = hints.filter(h => !dismissed.has(h.id));
+  const visible = hints.filter(h => !dismissed.includes(h.id));
   if (visible.length === 0) return null;
 
   return (
