@@ -10,25 +10,13 @@ services:
     healthCheckPath: /api/health
 
     envVars:
-      # Set this in the Render dashboard — never commit the real key
+      # Set ANTHROPIC_API_KEY in the Render dashboard — never commit the real key
       - key: ANTHROPIC_API_KEY
         sync: false
 
       # Your Vercel frontend URL (add after deploying frontend)
-      # e.g. https://prompt-refina.vercel.app
       - key: ALLOWED_ORIGINS
         sync: false
 
-      # Path to the persistent disk mount (matches disk.mountPath below)
-      - key: DATA_DIR
-        value: /data
-
       - key: NODE_ENV
         value: production
-
-    # Persistent disk keeps shares.json across deploys and restarts.
-    # Free plan: $1/month for 1 GB — remove this block if you don't need shares.
-    disk:
-      name: prompt-refina-data
-      mountPath: /data
-      sizeGB: 1
