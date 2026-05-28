@@ -26,17 +26,19 @@ function saveShares(shares) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS: in production restrict to the Vercel frontend URL(s).
+// CORS: restrict to allowed origins in production, or allow all when not configured.
 // Set ALLOWED_ORIGINS as a comma-separated list in your Render env vars.
 // e.g. ALLOWED_ORIGINS=https://your-app.vercel.app,https://custom-domain.com
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:4173'];
+  : null; // null = allow all origins
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no Origin header (curl, Postman, browser extension)
     if (!origin) return callback(null, true);
+    // If no allowlist configured, allow everything
+    if (!allowedOrigins) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS: origin "${origin}" is not allowed.`));
   },
