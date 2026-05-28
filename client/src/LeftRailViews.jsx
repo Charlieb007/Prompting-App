@@ -1279,11 +1279,11 @@ function ScoringDimensionsSettings({ settings, onChange }) {
   const [newDesc,  setNewDesc]  = useState('');
   const [adding, setAdding] = useState(false);
 
-  const removedSet = new Set(settings.removedDimensions || []);
+  const removedList = settings.removedDimensions || [];
   const customDims = settings.customDimensions || [];
 
-  function removeBuiltIn(id) { onChange({ removedDimensions: [...removedSet, id] }); }
-  function restoreBuiltIn(id) { onChange({ removedDimensions: [...removedSet].filter(x => x !== id) }); }
+  function removeBuiltIn(id) { onChange({ removedDimensions: [...removedList, id] }); }
+  function restoreBuiltIn(id) { onChange({ removedDimensions: removedList.filter(x => x !== id) }); }
   function addCustom() {
     const label = newLabel.trim();
     if (!label) return;
@@ -1298,7 +1298,7 @@ function ScoringDimensionsSettings({ settings, onChange }) {
     <div className="settings-group">
       <div className="settings-group-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>Scoring dimensions</span>
-        {(removedSet.size > 0 || customDims.length > 0) && (
+        {(removedList.length > 0 || customDims.length > 0) && (
           <button className="text-btn" onClick={resetToDefaults} style={{ fontSize: 11 }}>Reset to defaults</button>
         )}
       </div>
@@ -1307,9 +1307,9 @@ function ScoringDimensionsSettings({ settings, onChange }) {
       </div>
       <div className="dim-chips">
         {SCORE_DIMENSIONS.map(d => (
-          <div key={d.id} className={`dim-chip ${removedSet.has(d.id) ? 'removed' : ''}`} title={d.description}>
+          <div key={d.id} className={`dim-chip ${removedList.includes(d.id) ? 'removed' : ''}`} title={d.description}>
             {d.label}
-            {removedSet.has(d.id)
+            {removedList.includes(d.id)
               ? <button className="dim-chip-btn" onClick={() => restoreBuiltIn(d.id)} title="Restore">+</button>
               : <button className="dim-chip-btn" onClick={() => removeBuiltIn(d.id)} title="Remove">×</button>
             }

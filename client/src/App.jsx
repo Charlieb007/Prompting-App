@@ -1001,9 +1001,9 @@ function App() {
     abortRef.current = controller;
 
     // Build active dimensions list for the backend
-    const removedSet = new Set(settings.removedDimensions || []);
+    const removedList = settings.removedDimensions || [];
     const activeDimensions = [
-      ...SCORE_DIMENSIONS.filter(d => !removedSet.has(d.id)),
+      ...SCORE_DIMENSIONS.filter(d => !removedList.includes(d.id)),
       ...(settings.customDimensions || []),
     ];
 
