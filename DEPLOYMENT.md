@@ -2,10 +2,10 @@
 
 Prompt Refina deploys as two separate services:
 
-| Part | Host | Free? |
-|---|---|---|
-| Backend (Express API) | [Render](https://render.com) | ✅ 750 hrs/month |
-| Frontend (React / Vite) | [Vercel](https://vercel.com) | ✅ Unlimited |
+| Part | Host | Free? | Live URL |
+|---|---|---|---|
+| Backend (Express API) | [Render](https://render.com) | ✅ 750 hrs/month | https://prompt-refina-api.onrender.com |
+| Frontend (React / Vite) | [Vercel](https://vercel.com) | ✅ Unlimited | https://promptrefina.vercel.app |
 
 ---
 
@@ -14,52 +14,38 @@ Prompt Refina deploys as two separate services:
 ### 1.1 — Create a Render account
 Go to [render.com](https://render.com) and sign up (GitHub login recommended).
 
-### 1.2 — New Web Service
+### 1.2 — Connect GitHub
 1. Click **New +** → **Web Service**
-2. Connect your GitHub account and select the **Prompting-App** repository
-3. Fill in the settings:
+2. Connect your GitHub account — go to github.com/settings/installations, find Render, and add the **Prompting-App** repo
+3. Select the **Prompting-App** repository
+
+### 1.3 — Configure the service
 
 | Field | Value |
 |---|---|
-| **Name** | `prompt-refina-api` (or anything you like) |
+| **Name** | `prompt-refina-api` |
 | **Region** | Oregon (US West) |
 | **Branch** | `main` |
-| **Root Directory** | `server` |
+| **Root Directory** | *(leave blank)* |
 | **Runtime** | `Node` |
-| **Build Command** | `npm install` |
-| **Start Command** | `npm start` |
+| **Build Command** | `npm install --prefix server` |
+| **Start Command** | `node server/index.js` |
 | **Plan** | Free |
 
-### 1.3 — Add environment variables
-In the Render dashboard under **Environment**, add:
+### 1.4 — Add environment variables
+Under **Environment**, add:
 
 | Key | Value |
 |---|---|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (`sk-ant-...`) |
 | `NODE_ENV` | `production` |
-| `DATA_DIR` | `/data` |
-| `ALLOWED_ORIGINS` | *(leave blank for now — fill in after Step 2)* |
-
-### 1.4 — Add a persistent disk (for Share feature)
-In the Render dashboard under **Disks**, click **Add Disk**:
-
-| Field | Value |
-|---|---|
-| **Name** | `prompt-refina-data` |
-| **Mount Path** | `/data` |
-| **Size** | 1 GB |
-
-> Cost: $1/month. Skip this if you don't need the Share feature — shares just won't persist across restarts.
+| `ALLOWED_ORIGINS` | *(leave blank — CORS open by default; add your Vercel URL for security)* |
 
 ### 1.5 — Deploy
-Click **Create Web Service**. Render builds and deploys automatically.  
-Once green, note your backend URL — it looks like:  
+Click **Create Web Service**. Once green, your backend URL is:
 `https://prompt-refina-api.onrender.com`
 
-**Test it:** open `https://your-backend-url.onrender.com/api/health` in a browser. You should see:
-```json
-{"ok":true,"time":"..."}
-```
+**Test:** open `https://prompt-refina-api.onrender.com/api/health` — you should see `{"ok":true}`.
 
 ---
 
@@ -70,69 +56,50 @@ Go to [vercel.com](https://vercel.com) and sign up (GitHub login recommended).
 
 ### 2.2 — Import the project
 1. Click **Add New** → **Project**
-2. Import the **Prompting-App** repository from GitHub
-3. Vercel will detect the `vercel.json` at the root automatically
+2. Import **Prompting-App** from GitHub
+3. Vercel auto-detects `vercel.json`
 
 ### 2.3 — Add environment variable
-Under **Environment Variables**, add:
 
 | Key | Value |
 |---|---|
-| `VITE_API_URL` | `https://your-backend-url.onrender.com` *(the URL from Step 1.5)* |
+| `VITE_API_URL` | `https://prompt-refina-api.onrender.com` |
 
 ### 2.4 — Deploy
-Click **Deploy**. Vercel builds the Vite app and deploys it to a global CDN.  
-Your frontend URL will look like: `https://prompt-refina-xyz.vercel.app`
+Click **Deploy**. Your frontend will be live at `https://promptrefina.vercel.app`.
 
 ---
 
-## Step 3 — Wire them together
+## Step 3 — Prevent cold starts (recommended)
 
-### 3.1 — Update CORS on Render
-Go back to **Render → Environment** and add:
+Render's free tier sleeps after **15 minutes of inactivity** → ~30 second cold start.
 
-| Key | Value |
-|---|---|
-| `ALLOWED_ORIGINS` | `https://prompt-refina-xyz.vercel.app` |
-
-If you have a custom domain, add it too (comma-separated):
-```
-https://prompt-refina-xyz.vercel.app,https://prompts.yourdomain.com
-```
-
-Click **Save Changes** — Render redeploys automatically.
-
-### 3.2 — Test end-to-end
-1. Open your Vercel URL
-2. Type a rough prompt and click Refine
-3. The refined prompt should stream in
+**Fix: UptimeRobot (free)**
+1. Go to [uptimerobot.com](https://uptimerobot.com) → **Add New Monitor**
+2. Type: **HTTP(s)**, URL: `https://prompt-refina-api.onrender.com/api/health`
+3. Interval: **14 minutes**
+4. Save
 
 ---
 
-## Step 4 — Prevent cold starts (optional but recommended)
+## Step 4 — Custom domain (optional)
 
-Render's free tier spins down after **15 minutes of inactivity**, causing a ~30-second cold start on the next request.
+**On Vercel:** Settings → Domains → add your domain. Vercel handles SSL.
 
-**Fix: use UptimeRobot (free)**
-1. Go to [uptimerobot.com](https://uptimerobot.com) and create a free account
-2. Click **Add New Monitor**
-3. Type: **HTTP(s)**, URL: `https://your-backend-url.onrender.com/api/health`
-4. Monitoring interval: **5 minutes**
-5. Save
-
-UptimeRobot pings your backend every 5 minutes, keeping it warm. Cold starts disappear.
+**On Render:** Settings → Custom Domains → add your domain, then add it to `ALLOWED_ORIGINS`.
 
 ---
 
-## Step 5 — Custom domain (optional)
+## Browser Extension
 
-**On Vercel:** Settings → Domains → Add your domain. Vercel handles SSL automatically.
+The extension in `extension/` connects to the production backend by default.
+Load it unpacked in Chrome: `chrome://extensions` → Developer mode → Load unpacked → select `extension/`.
 
-**On Render:** Settings → Custom Domains → Add your domain. Then update `ALLOWED_ORIGINS` to include it.
+To point it at a different backend, edit `extension/config.js`.
 
 ---
 
-## Local development (unchanged)
+## Local development
 
 ```bash
 # Backend
@@ -149,13 +116,13 @@ npm run dev                   # runs on http://localhost:5173
 
 ---
 
-## Re-deploying after code changes
+## Auto-deploy on push
 
-Both services auto-deploy when you push to `main` on GitHub. No manual steps needed.
+Both services auto-deploy when you push to `main`:
 
 ```bash
 git add -A
 git commit -m "your changes"
 git push origin main
-# Render and Vercel both pick this up automatically
+# Render and Vercel both redeploy automatically
 ```

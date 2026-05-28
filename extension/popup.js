@@ -147,10 +147,10 @@ async function refine() {
 
     let message;
     if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
-      message =
-        `Could not reach Prompt Refina at ${API_URL}.\n\n` +
-        `Make sure your backend is running:\n` +
-        `cd ~/prompt-improver/server && npm run dev`;
+      const isLocal = API_URL.includes('localhost');
+      message = isLocal
+        ? `Could not reach Prompt Refina at ${API_URL}.\n\nMake sure the backend is running:\ncd server && npm run dev`
+        : `Could not reach the Prompt Refina server.\n\nThe server may be starting up — please wait 30 seconds and try again.\n\n${API_URL}`;
     } else {
       message = err.message || 'Something went wrong. Please try again.';
     }
