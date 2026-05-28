@@ -252,6 +252,7 @@ app.post('/api/improve-compare', async (req, res) => {
   sendEvent(res, 'compare-start', { models });
 
   const userMessage = REFINER_USER_TEMPLATE(prompt, category);
+  const systemPrompt = buildSystemPrompt();
 
   const tasks = models.map(async (modelId) => {
     const startTime = Date.now();
@@ -264,7 +265,7 @@ app.post('/api/improve-compare', async (req, res) => {
       const stream = await client.messages.stream({
         model: modelId,
         max_tokens: 4000,
-        system: REFINER_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       });
 
