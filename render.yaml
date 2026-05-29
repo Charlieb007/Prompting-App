@@ -26,5 +26,13 @@ services:
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
 
+      # Supabase (server-side auth) — lets AI routes identify the signed-in user
+      # and rate-limit per user. Same values as the client's Supabase project.
+      # Without these, requests are simply treated as anonymous.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
       - key: NODE_ENV
         value: production

@@ -12,6 +12,7 @@ import {
   FOLLOWUP_USER_TEMPLATE,
 } from './lib.js';
 import { initShareStore, saveShare, getShare } from './shareStore.js';
+import { supabaseAuthEnabled, getUserFromToken } from './serverSupabase.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,8 +64,26 @@ setInterval(() => {
   for (const [ip, b] of rateBuckets) if (now >= b.resetAt) rateBuckets.delete(ip);
 }, RATE_LIMIT_WINDOW_MS).unref?.();
 
+// Soft auth: if a valid Supabase token is present, attach the user; otherwise
+// proceed anonymously (the app allows anonymous use). Place before rateLimit so
+// limits can be keyed per-user.
+async function attachUser(req, res, next) {
+  req.user = null;
+  req.accessToken = null;
+  if (supabaseAuthEnabled) {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (token) {
+      const user = await getUserFromToken(token);
+      if (user) { req.user = user; req.accessToken = token; }
+    }
+  }
+  next();
+}
+
 function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  // Key by authenticated user when available, else client IP.
+  const ip = req.user?.id ? `user:${req.user.id}` : (req.ip || req.socket?.remoteAddress || 'unknown');
   const now = Date.now();
   let bucket = rateBuckets.get(ip);
   if (!bucket || now >= bucket.resetAt) {
@@ -118,7 +137,7 @@ function wireAbort(res) {
 
 /* ── /api/improve ─────────────────────────────────────── */
 
-app.post('/api/improve', rateLimit, async (req, res) => {
+app.post('/api/improve', attachUser, rateLimit, async (req, res) => {
   const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions, customInstructions, targetModel, promptType } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -212,7 +231,7 @@ app.post('/api/improve', rateLimit, async (req, res) => {
 
 /* ── /api/improve-compare ─────────────────────────────── */
 
-app.post('/api/improve-compare', rateLimit, async (req, res) => {
+app.post('/api/improve-compare', attachUser, rateLimit, async (req, res) => {
   const { prompt, category = 'general', models } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -297,7 +316,7 @@ app.post('/api/improve-compare', rateLimit, async (req, res) => {
 
 /* ── /api/test-prompt ─────────────────────────────────── */
 
-app.post('/api/test-prompt', rateLimit, async (req, res) => {
+app.post('/api/test-prompt', attachUser, rateLimit, async (req, res) => {
   const { prompts, model = 'claude-sonnet-4-6' } = req.body;
 
   if (!Array.isArray(prompts) || prompts.length === 0) {
@@ -356,7 +375,7 @@ app.post('/api/test-prompt', rateLimit, async (req, res) => {
 // response's 'close' event (not req.on('close'), which fired spuriously during
 // the SSE header flush in Express 5 / Node 20) and aborts the Anthropic stream
 // only when the connection closes before the work is marked finished.
-app.post('/api/run-prompt', rateLimit, async (req, res) => {
+app.post('/api/run-prompt', attachUser, rateLimit, async (req, res) => {
   const { messages, model = 'claude-sonnet-4-6' } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -625,7 +644,7 @@ app.post('/api/export/slack', rateLimit, async (req, res) => {
 
 /* ── AI Critique ──────────────────────────────────────────── */
 
-app.post('/api/critique', rateLimit, async (req, res) => {
+app.post('/api/critique', attachUser, rateLimit, async (req, res) => {
   const { prompt, model } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt is required.' });
 
@@ -699,7 +718,7 @@ Respond with ONLY a JSON object, no prose, in this exact shape:
 
 Be strict but fair: "pass" is true only when the actual output meets the core of the expectation. Score reflects the overall quality of the match.`;
 
-app.post('/api/eval', rateLimit, async (req, res) => {
+app.post('/api/eval', attachUser, rateLimit, async (req, res) => {
   const { prompt, model = 'claude-sonnet-4-6', cases, judgeModel } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {

@@ -39,10 +39,10 @@ export async function consumeSSE(response, handlers) {
   }
 }
 
-export async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onScores, onDone, onError, signal }) {
+export async function streamRefinement({ url, body, onChunk, onRefinedDone, onChanges, onScores, onDone, onError, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });
@@ -57,10 +57,10 @@ export async function streamRefinement({ url, body, onChunk, onRefinedDone, onCh
   });
 }
 
-export async function streamComparison({ url, body, onStart, onModelChunk, onModelChanges, onModelScores, onModelDone, onModelError, onDone, onError, signal }) {
+export async function streamComparison({ url, body, onStart, onModelChunk, onModelChanges, onModelScores, onModelDone, onModelError, onDone, onError, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });
@@ -77,10 +77,10 @@ export async function streamComparison({ url, body, onStart, onModelChunk, onMod
   });
 }
 
-export async function streamTest({ url, body, onChunk, onDone, onError, onComplete, signal }) {
+export async function streamTest({ url, body, onChunk, onDone, onError, onComplete, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });
@@ -95,10 +95,10 @@ export async function streamTest({ url, body, onChunk, onDone, onError, onComple
   });
 }
 
-export async function streamRunPrompt({ url, body, onChunk, onDone, onError, signal }) {
+export async function streamRunPrompt({ url, body, onChunk, onDone, onError, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });
@@ -110,10 +110,10 @@ export async function streamRunPrompt({ url, body, onChunk, onDone, onError, sig
   });
 }
 
-export async function streamCritique({ url, body, onChunk, onDone, onError, signal }) {
+export async function streamCritique({ url, body, onChunk, onDone, onError, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });
@@ -125,10 +125,10 @@ export async function streamCritique({ url, body, onChunk, onDone, onError, sign
   });
 }
 
-export async function streamEval({ url, body, onChunk, onGraded, onDone, onError, onComplete, signal }) {
+export async function streamEval({ url, body, onChunk, onGraded, onDone, onError, onComplete, signal, token }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     signal,
   });

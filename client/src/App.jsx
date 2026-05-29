@@ -124,7 +124,7 @@ function App() {
   const [codeModalOpen, setCodeModalOpen] = useState(false);
 
   // Auth (anonymous-first): session is null when logged out or unconfigured.
-  const { user } = useSupabaseSession();
+  const { user, session } = useSupabaseSession();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('signin');
   function openAuth(mode = 'signin') { setAuthModalMode(mode); setAuthModalOpen(true); }
@@ -1135,6 +1135,7 @@ function App() {
 
     try {
       await streamRefinement({
+        token: session?.access_token,
         url: `${API_URL}/api/improve`,
         body: {
           prompt: sourcePrompt,
@@ -1316,6 +1317,7 @@ function App() {
 
     try {
       await streamComparison({
+        token: session?.access_token,
         url: `${API_URL}/api/improve-compare`,
         body: { prompt: submittedPrompt, category, models: modelIds },
         signal: controller.signal,
@@ -1405,6 +1407,7 @@ function App() {
 
     try {
       await streamTest({
+        token: session?.access_token,
         url: `${API_URL}/api/test-prompt`,
         body: { prompts, model: settings.testModel },
         signal: controller.signal,
@@ -1555,6 +1558,7 @@ function App() {
 
     try {
       await streamRunPrompt({
+        token: session?.access_token,
         url: `${API_URL}/api/run-prompt`,
         body: { messages: apiMessages, model: settings.testModel },
         signal: controller.signal,
@@ -1692,6 +1696,7 @@ function App() {
 
     try {
       await streamRunPrompt({
+        token: session?.access_token,
         url: `${API_URL}/api/run-prompt`,
         body: {
           messages: [
@@ -1776,6 +1781,7 @@ function App() {
 
     try {
       await streamCritique({
+        token: session?.access_token,
         url: `${API_URL}/api/critique`,
         body: { prompt: displayImproved, model: settings.model },
         onChunk: (text) => setCritiqueText(prev => prev + text),
