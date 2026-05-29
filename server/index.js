@@ -6,6 +6,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
+import {
+  buildSystemPrompt,
+  parseRefinerResponse,
+  REFINER_USER_TEMPLATE,
+  FOLLOWUP_USER_TEMPLATE,
+} from './lib.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,86 +52,45 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Trust the first proxy hop (Render/Vercel sit in front) so req.ip reflects
+// the real client address rather than the proxy's.
+app.set('trust proxy', 1);
+
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-/* ── Refiner system prompt ─────────────────────────────── */
+/* ── Rate limiting ─────────────────────────────────────── */
+// Lightweight in-memory fixed-window limiter, applied to the AI/export routes
+// that spend money or hit third parties. Per-instance (resets on restart and
+// isn't shared across dynos), which is sufficient abuse protection for a
+// single-instance deployment and adds no dependencies.
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 30;
+const rateBuckets = new Map();
 
-const DEFAULT_DIMENSIONS = [
-  { id: 'specificity', label: 'Specificity', description: 'Concreteness and detail of the request.' },
-  { id: 'audience',    label: 'Audience',    description: 'Who the response is for and what they need.' },
-  { id: 'format',      label: 'Format',      description: 'Whether the desired output format is specified.' },
-  { id: 'constraints', label: 'Constraints', description: 'Limits, exclusions, requirements stated.' },
-  { id: 'examples',   label: 'Examples',    description: 'Examples provided or step-by-step reasoning requested.' },
-];
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, b] of rateBuckets) if (now >= b.resetAt) rateBuckets.delete(ip);
+}, RATE_LIMIT_WINDOW_MS).unref?.();
 
-function buildSystemPrompt(dimensions) {
-  const dims = dimensions && dimensions.length > 0 ? dimensions : DEFAULT_DIMENSIONS;
-  const dimList = dims.map(d => `  - ${d.id}: ${d.description || d.label}`).join('\n');
-  const dimKeys = dims.map(d => d.id).join(', ');
-
-  return `You are a prompt engineering specialist. Your job is to take a rough, vague, or incomplete prompt from a user and refine it into a well-structured prompt that will get better results from an AI model.
-
-When refining a prompt, you should:
-- Add specificity (what exactly is being asked?)
-- Clarify the audience (who is the output for?)
-- Specify the output format (length, structure, tone)
-- Add useful constraints (what to include, what to exclude)
-- Sometimes add examples or ask for step-by-step reasoning
-
-You must respond in this exact format, using these exact delimiters:
-
-<<<REFINED_PROMPT>>>
-[the improved prompt text]
-<<<CHANGES_JSON>>>
-[a JSON array of changes, each with "title" and "explanation" fields]
-<<<SCORES_JSON>>>
-[a JSON object with "rough" and "refined" keys, each containing scores for these dimensions: ${dimKeys}
-Each score is an object: {"score": 1-5, "rationale": "..."}
-Dimensions to score:
-${dimList}]
-<<<END>>>
-
-For follow-up refinements, the user gives you a previously-refined prompt and feedback. Apply the feedback to produce a new refined version. Score the new version (not the original rough prompt) against the previous refined version. The "rough" scores in this case represent the previous refined version's scores.
-
-Be honest in scoring — a great rough prompt should score high. A bad refinement should score low. Don't pad numbers to seem helpful.`;
-}
-
-const REFINER_USER_TEMPLATE = (prompt, category, customInstructions) => `Category: ${category}
-
-Rough prompt:
-${prompt}
-${customInstructions ? `\nAdditional refinement instructions from the user:\n${customInstructions}\n` : ''}
-Refine this prompt and respond in the exact format specified.`;
-
-const FOLLOWUP_USER_TEMPLATE = (originalRough, previousRefined, feedback, category, customInstructions) => `Category: ${category}
-
-Original rough prompt:
-${originalRough}
-
-Previous refined version:
-${previousRefined}
-
-User feedback for further refinement:
-${feedback}
-${customInstructions ? `\nAdditional refinement instructions from the user:\n${customInstructions}\n` : ''}
-Apply the feedback to produce a new refined version. Score against the previous refined version (use it as the "rough" baseline).`;
-
-/* ── Refiner stream parsing ────────────────────────────── */
-
-function parseRefinerResponse(fullText) {
-  const refined = (fullText.match(/<<<REFINED_PROMPT>>>([\s\S]*?)<<<CHANGES_JSON>>>/) || [])[1]?.trim() || '';
-  const changesRaw = (fullText.match(/<<<CHANGES_JSON>>>([\s\S]*?)<<<SCORES_JSON>>>/) || [])[1]?.trim() || '[]';
-  const scoresRaw = (fullText.match(/<<<SCORES_JSON>>>([\s\S]*?)<<<END>>>/) || [])[1]?.trim() || '{}';
-
-  let changes = [];
-  let scores = null;
-
-  try { changes = JSON.parse(changesRaw); } catch (e) { console.warn('Failed to parse changes JSON:', e); }
-  try { scores = JSON.parse(scoresRaw); } catch (e) { console.warn('Failed to parse scores JSON:', e); }
-
-  return { refined, changes, scores };
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  let bucket = rateBuckets.get(ip);
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateBuckets.set(ip, bucket);
+  }
+  bucket.count++;
+  res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX);
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX - bucket.count));
+  if (bucket.count > RATE_LIMIT_MAX) {
+    const retryAfter = Math.ceil((bucket.resetAt - now) / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    return res.status(429).json({ error: `Too many requests. Try again in ${retryAfter}s.` });
+  }
+  next();
 }
 
 /* ── SSE helpers ───────────────────────────────────────── */
@@ -139,14 +104,33 @@ function setupSSE(res) {
 }
 
 function sendEvent(res, eventName, data) {
+  if (res.writableEnded) return;
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+// Wire client-disconnect cancellation onto an SSE response. We listen on the
+// *response* close (not req.on('close'), which fires spuriously during the SSE
+// header flush in Express 5 / Node 20) and only abort once the response closes
+// before we've marked the work finished. Pass `signal` to the Anthropic SDK and
+// call `done()` right after the stream completes normally.
+function wireAbort(res) {
+  const controller = new AbortController();
+  const state = { finished: false };
+  res.on('close', () => {
+    if (!state.finished) controller.abort();
+  });
+  return {
+    signal: controller.signal,
+    done: () => { state.finished = true; },
+    aborted: () => controller.signal.aborted,
+  };
+}
+
 /* ── /api/improve ─────────────────────────────────────── */
 
-app.post('/api/improve', async (req, res) => {
-  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions, customInstructions } = req.body;
+app.post('/api/improve', rateLimit, async (req, res) => {
+  const { prompt, category = 'general', model = 'claude-sonnet-4-6', previousRefined, feedback, dimensions, customInstructions, targetModel, promptType } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt is required and must be a string.' });
@@ -156,8 +140,9 @@ app.post('/api/improve', async (req, res) => {
   }
 
   setupSSE(res);
+  const abort = wireAbort(res);
 
-  const systemPrompt = buildSystemPrompt(dimensions);
+  const systemPrompt = buildSystemPrompt(dimensions, { targetModel, promptType });
 
   const userMessage = (previousRefined && feedback)
     ? FOLLOWUP_USER_TEMPLATE(prompt, previousRefined, feedback, category, customInstructions)
@@ -176,7 +161,7 @@ app.post('/api/improve', async (req, res) => {
       max_tokens: 4000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    });
+    }, { signal: abort.signal });
 
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -221,21 +206,24 @@ app.post('/api/improve', async (req, res) => {
 
     const latencyMs = Date.now() - startTime;
 
+    abort.done();
     sendEvent(res, 'done', {
       usage: { inputTokens, outputTokens },
       latencyMs,
     });
   } catch (err) {
+    if (abort.aborted()) return;
     console.error('Refinement error:', err);
     sendEvent(res, 'error', { error: err.message || 'Refinement failed.' });
   } finally {
-    res.end();
+    abort.done();
+    if (!res.writableEnded) res.end();
   }
 });
 
 /* ── /api/improve-compare ─────────────────────────────── */
 
-app.post('/api/improve-compare', async (req, res) => {
+app.post('/api/improve-compare', rateLimit, async (req, res) => {
   const { prompt, category = 'general', models } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -249,6 +237,7 @@ app.post('/api/improve-compare', async (req, res) => {
   }
 
   setupSSE(res);
+  const abort = wireAbort(res);
   sendEvent(res, 'compare-start', { models });
 
   const userMessage = REFINER_USER_TEMPLATE(prompt, category);
@@ -267,7 +256,7 @@ app.post('/api/improve-compare', async (req, res) => {
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
-      });
+      }, { signal: abort.signal });
 
       for await (const event of stream) {
         if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -312,13 +301,14 @@ app.post('/api/improve-compare', async (req, res) => {
   });
 
   await Promise.allSettled(tasks);
+  abort.done();
   sendEvent(res, 'compare-done', {});
-  res.end();
+  if (!res.writableEnded) res.end();
 });
 
 /* ── /api/test-prompt ─────────────────────────────────── */
 
-app.post('/api/test-prompt', async (req, res) => {
+app.post('/api/test-prompt', rateLimit, async (req, res) => {
   const { prompts, model = 'claude-sonnet-4-6' } = req.body;
 
   if (!Array.isArray(prompts) || prompts.length === 0) {
@@ -326,6 +316,7 @@ app.post('/api/test-prompt', async (req, res) => {
   }
 
   setupSSE(res);
+  const abort = wireAbort(res);
   sendEvent(res, 'test-start', { count: prompts.length });
 
   const tasks = prompts.map(async ({ id, prompt }) => {
@@ -338,7 +329,7 @@ app.post('/api/test-prompt', async (req, res) => {
         model,
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
-      });
+      }, { signal: abort.signal });
 
       for await (const event of stream) {
         if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -364,22 +355,19 @@ app.post('/api/test-prompt', async (req, res) => {
   });
 
   await Promise.allSettled(tasks);
+  abort.done();
   sendEvent(res, 'test-complete', {});
-  res.end();
+  if (!res.writableEnded) res.end();
 });
 
 /* ── /api/run-prompt ──────────────────────────────────── */
 
-// Accepts a conversation as a list of messages and streams Claude's
-// response. The previous version of this endpoint listened to req.on('close')
-// to detect client disconnect and abort early — but that event fires
-// spuriously in Express + Node 20 during the SSE header flush, causing
-// the loop to exit immediately on the first iteration with zero chunks
-// sent. We now skip abort detection; if the user closes the drawer
-// mid-stream, the Anthropic call finishes in the background. Cost
-// impact is small for typical conversations and we can add proper
-// abort logic later.
-app.post('/api/run-prompt', async (req, res) => {
+// Accepts a conversation as a list of messages and streams Claude's response.
+// Client-disconnect cancellation is wired via wireAbort(), which listens on the
+// response's 'close' event (not req.on('close'), which fired spuriously during
+// the SSE header flush in Express 5 / Node 20) and aborts the Anthropic stream
+// only when the connection closes before the work is marked finished.
+app.post('/api/run-prompt', rateLimit, async (req, res) => {
   const { messages, model = 'claude-sonnet-4-6' } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -409,6 +397,7 @@ app.post('/api/run-prompt', async (req, res) => {
   }
 
   setupSSE(res);
+  const abort = wireAbort(res);
 
   const startTime = Date.now();
   let inputTokens = 0;
@@ -420,7 +409,7 @@ app.post('/api/run-prompt', async (req, res) => {
       model,
       max_tokens: 4096,
       messages,
-    });
+    }, { signal: abort.signal });
 
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -438,11 +427,13 @@ app.post('/api/run-prompt', async (req, res) => {
     }
 
     const latencyMs = Date.now() - startTime;
+    abort.done();
     sendEvent(res, 'run-done', {
       usage: { inputTokens, outputTokens },
       latencyMs,
     });
   } catch (err) {
+    if (abort.aborted()) return;
     console.error('[run-prompt] ERROR:', err.message || err);
     let userMessage = 'Failed to run prompt.';
     if (err.status === 401) {
@@ -458,7 +449,8 @@ app.post('/api/run-prompt', async (req, res) => {
     }
     sendEvent(res, 'run-error', { error: userMessage });
   } finally {
-    res.end();
+    abort.done();
+    if (!res.writableEnded) res.end();
   }
 });
 
@@ -481,7 +473,7 @@ function getShares() {
   return { ...disk, ...memoryShares };
 }
 
-app.post('/api/share', (req, res) => {
+app.post('/api/share', rateLimit, (req, res) => {
   const { rough, improved, changes, scores, category, model } = req.body;
   if (!rough || !improved) {
     return res.status(400).json({ error: 'rough and improved are required.' });
@@ -550,7 +542,7 @@ app.get('/share/:id', (req, res) => {
 
 /* ── Export to Notion ─────────────────────────────────────── */
 
-app.post('/api/export/notion', async (req, res) => {
+app.post('/api/export/notion', rateLimit, async (req, res) => {
   const { rough, improved, changes, category, model, token, databaseId } = req.body;
 
   if (!token)      return res.status(400).json({ error: 'Notion API token is required.' });
@@ -616,7 +608,7 @@ app.post('/api/export/notion', async (req, res) => {
 
 /* ── Export to Slack ──────────────────────────────────────── */
 
-app.post('/api/export/slack', async (req, res) => {
+app.post('/api/export/slack', rateLimit, async (req, res) => {
   const { rough, improved, changes, category, model, webhookUrl } = req.body;
 
   if (!webhookUrl) return res.status(400).json({ error: 'Slack webhook URL is required.' });
@@ -656,13 +648,14 @@ app.post('/api/export/slack', async (req, res) => {
 
 /* ── AI Critique ──────────────────────────────────────────── */
 
-app.post('/api/critique', async (req, res) => {
+app.post('/api/critique', rateLimit, async (req, res) => {
   const { prompt, model } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt is required.' });
 
   const critiqueModel = model || 'claude-opus-4-8';
 
   setupSSE(res);
+  const abort = wireAbort(res);
 
   const systemPrompt = `You are a prompt quality analyst. Your job is to identify specific, actionable weaknesses in AI prompts.
 
@@ -687,7 +680,7 @@ Rules:
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-    });
+    }, { signal: abort.signal });
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
@@ -699,6 +692,7 @@ Rules:
 
     const finalMessage = await stream.finalMessage();
     const latencyMs = Date.now() - startTime;
+    abort.done();
     sendEvent(res, 'critique-done', {
       usage: {
         inputTokens: finalMessage.usage?.input_tokens || 0,
@@ -708,11 +702,105 @@ Rules:
     });
 
   } catch (err) {
+    if (abort.aborted()) return;
     console.error('/api/critique error:', err);
     sendEvent(res, 'critique-error', { error: err.message || 'Critique failed.' });
   } finally {
-    res.end();
+    abort.done();
+    if (!res.writableEnded) res.end();
   }
+});
+
+/* ── /api/eval ────────────────────────────────────────── */
+// Runs a prompt against a set of test cases and, when an expected result is
+// provided, grades each output with an LLM judge. Streams per-case output via
+// 'eval-chunk', then 'eval-graded' and 'eval-done', and a final 'eval-complete'.
+const EVAL_JUDGE_SYSTEM = `You are a strict evaluation judge. You are given an EXPECTED result description and the ACTUAL output a model produced for a prompt. Decide how well the actual output satisfies the expectation.
+
+Respond with ONLY a JSON object, no prose, in this exact shape:
+{"pass": true|false, "score": 0-100, "reason": "one or two sentences"}
+
+Be strict but fair: "pass" is true only when the actual output meets the core of the expectation. Score reflects the overall quality of the match.`;
+
+app.post('/api/eval', rateLimit, async (req, res) => {
+  const { prompt, model = 'claude-sonnet-4-6', cases, judgeModel } = req.body;
+
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'prompt is required.' });
+  }
+  if (!Array.isArray(cases) || cases.length === 0) {
+    return res.status(400).json({ error: 'cases array is required.' });
+  }
+  if (cases.length > 20) {
+    return res.status(400).json({ error: 'Maximum 20 test cases.' });
+  }
+
+  setupSSE(res);
+  const abort = wireAbort(res);
+  sendEvent(res, 'eval-start', { count: cases.length });
+
+  const judge = judgeModel || model;
+
+  const tasks = cases.map(async (testCase) => {
+    const { id, input, expected } = testCase || {};
+    const startTime = Date.now();
+    let output = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      const content = input ? `${prompt}\n\n${input}` : prompt;
+      const stream = await client.messages.stream({
+        model,
+        max_tokens: 2048,
+        messages: [{ role: 'user', content }],
+      }, { signal: abort.signal });
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          output += event.delta.text;
+          sendEvent(res, 'eval-chunk', { id, text: event.delta.text });
+        }
+        if (event.type === 'message_delta' && event.usage) {
+          outputTokens = event.usage.output_tokens || outputTokens;
+        }
+        if (event.type === 'message_start' && event.message?.usage) {
+          inputTokens = event.message.usage.input_tokens || 0;
+        }
+      }
+
+      if (expected && typeof expected === 'string' && expected.trim()) {
+        try {
+          const judgeMsg = await client.messages.create({
+            model: judge,
+            max_tokens: 300,
+            system: EVAL_JUDGE_SYSTEM,
+            messages: [{ role: 'user', content: `EXPECTED:\n${expected}\n\nACTUAL:\n${output}` }],
+          }, { signal: abort.signal });
+          const judgeText = (judgeMsg.content || []).map(b => b.text || '').join('');
+          const match = judgeText.match(/\{[\s\S]*\}/);
+          let verdict = null;
+          if (match) { try { verdict = JSON.parse(match[0]); } catch { /* ignore malformed judge JSON */ } }
+          sendEvent(res, 'eval-graded', verdict
+            ? { id, pass: !!verdict.pass, score: typeof verdict.score === 'number' ? verdict.score : null, reason: verdict.reason || '' }
+            : { id, pass: null, score: null, reason: 'Could not parse judge response.' });
+        } catch (judgeErr) {
+          if (!abort.aborted()) sendEvent(res, 'eval-graded', { id, pass: null, score: null, reason: 'Grading failed.' });
+        }
+      }
+
+      sendEvent(res, 'eval-done', { id, usage: { inputTokens, outputTokens }, latencyMs: Date.now() - startTime });
+    } catch (err) {
+      if (abort.aborted()) return;
+      console.error(`Eval error for ${id}:`, err);
+      sendEvent(res, 'eval-error', { id, error: err.message || 'Eval failed.' });
+    }
+  });
+
+  await Promise.allSettled(tasks);
+  abort.done();
+  sendEvent(res, 'eval-complete', {});
+  if (!res.writableEnded) res.end();
 });
 
 app.listen(PORT, () => {

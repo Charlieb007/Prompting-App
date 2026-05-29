@@ -6665,3 +6665,84 @@ kbd {
   transition: background 0.15s;
 }
 .onboarding-next:hover { background: var(--accent-hover); }
+
+/* ── Composer: prompt-type toggle + target-model selector ── */
+.composer-chips-secondary {
+  align-items: center;
+  gap: 10px;
+  padding-top: 0;
+}
+.prompt-type-toggle { display: inline-flex; gap: 5px; }
+.target-model-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+.target-model-select select {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0.5px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.target-model-select select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Code export modal ── */
+.code-lang-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.code-snippet {
+  background: var(--bg-subtle);
+  border: 0.5px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 360px;
+  margin-bottom: 12px;
+}
+
+/* ── Comparison recommendation banner ── */
+.compare-recommendation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 9px 14px;
+  background: var(--accent-bg);
+  border: 0.5px solid rgba(205, 111, 71, 0.28);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.compare-recommendation-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-text);
+}
+.compare-recommendation-text { color: var(--text-secondary); }
+
+/* ── Prompt Eval view ── */
+.eval-case-card {
+  border: 0.5px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--bg-subtle);
+}
+.eval-case-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.eval-case-result { margin-top: 8px; }
+.eval-verdict { font-size: 12px; font-weight: 700; }
+.eval-verdict.pass { color: #22c55e; }
+.eval-verdict.fail { color: #ef4444; }
+.eval-case-reason { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); font-style: italic; }

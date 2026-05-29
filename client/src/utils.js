@@ -199,6 +199,109 @@ export function autoTitle(firstUserMessage) {
   return truncated + '…';
 }
 
+/**
+ * Cost optimizer: given comparison entries [{ modelId, quality (0–5|null), cost (usd|null) }],
+ * recommend the cheapest model whose quality is within `tolerance` points of the best.
+ * Returns { modelId, quality, cost, reason, isBest } or null.
+ */
+export function recommendModel(entries, tolerance = 0.4) {
+  const valid = (entries || []).filter(e => e && e.modelId && e.quality != null);
+  if (!valid.length) return null;
+
+  const bestQuality = Math.max(...valid.map(e => e.quality));
+  const contenders = valid.filter(e => e.quality >= bestQuality - tolerance);
+  const withCost = contenders.filter(e => e.cost != null);
+  const pool = withCost.length ? withCost : contenders;
+
+  const pick = pool.reduce((best, e) => {
+    if (!best) return e;
+    const bc = best.cost == null ? Infinity : best.cost;
+    const ec = e.cost == null ? Infinity : e.cost;
+    if (ec !== bc) return ec < bc ? e : best;
+    return e.quality > best.quality ? e : best; // tiebreak on quality
+  }, null);
+
+  if (!pick) return null;
+  const isBest = pick.quality >= bestQuality;
+  const reason = isBest
+    ? 'Top quality at the best price among compared models.'
+    : `Within ${tolerance.toFixed(1)} pts of the top score for less cost.`;
+  return { modelId: pick.modelId, quality: pick.quality, cost: pick.cost, reason, isBest };
+}
+
+function pyStringLiteral(s) {
+  const esc = String(s || '').replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+  return `"""${esc}"""`;
+}
+
+function jsTemplateLiteral(s) {
+  const esc = String(s || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+  return `\`${esc}\``;
+}
+
+/**
+ * Build a ready-to-paste code snippet that calls an LLM API with the given prompt.
+ * lang ∈ 'anthropic-python' | 'anthropic-node' | 'openai-python' | 'curl'.
+ */
+export function buildCodeSnippet(prompt, { lang = 'anthropic-python', model = 'claude-opus-4-8' } = {}) {
+  const text = prompt || '';
+  switch (lang) {
+    case 'anthropic-python':
+      return `import anthropic
+
+client = anthropic.Anthropic()
+
+message = client.messages.create(
+    model="${model}",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": ${pyStringLiteral(text)}}
+    ],
+)
+print(message.content[0].text)`;
+
+    case 'anthropic-node':
+      return `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+const message = await client.messages.create({
+  model: "${model}",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: ${jsTemplateLiteral(text)} }],
+});
+console.log(message.content[0].text);`;
+
+    case 'openai-python':
+      return `from openai import OpenAI
+
+client = OpenAI()
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "user", "content": ${pyStringLiteral(text)}}
+    ],
+)
+print(response.choices[0].message.content)`;
+
+    case 'curl': {
+      const payload = JSON.stringify(
+        { model, max_tokens: 1024, messages: [{ role: 'user', content: text }] },
+        null, 2
+      ).replace(/'/g, `'\\''`);
+      return `curl https://api.anthropic.com/v1/messages \\
+  -H "x-api-key: $ANTHROPIC_API_KEY" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "content-type: application/json" \\
+  -d '${payload}'`;
+    }
+
+    default:
+      return text;
+  }
+}
+
 export function buildShareMarkdown(rough, improved, changes) {
   let md = `# Refined Prompt\n\n`;
   md += `**Original:**\n\n${rough}\n\n`;

@@ -10,7 +10,7 @@ import {
   STORAGE_HISTORY, STORAGE_SETTINGS, STORAGE_SAVED, STORAGE_USAGE,
   STORAGE_CURRENT_CONVO, STORAGE_CONVERSATIONS, STORAGE_FOLDERS, STORAGE_CHAIN,
   MAX_HISTORY, MAX_USAGE_RECORDS, MAX_CONVERSATIONS,
-  DEFAULT_MODEL, DEFAULT_SETTINGS, QUICK_STARTS,
+  DEFAULT_MODEL, DEFAULT_SETTINGS, QUICK_STARTS, TARGET_MODELS,
 } from './constants.js';
 import {
   formatTime, makeId, averageScore, modelShortName, computeCost, formatCost,
@@ -25,17 +25,17 @@ import {
   SidebarIcon, HistoryIcon, TemplatesIcon, StarIcon, HelpIcon, SettingsIcon,
   UsageIcon, SendIcon, MicIcon, MicOffIcon, PDFIcon, ExternalLinkIcon, PlayCircleIcon,
   ConversationsIcon, ChartIcon, ShareIcon, ChainIcon, LoopIcon, PlusIcon, PencilIcon,
-  KeyboardIcon, CritiqueIcon, BatchIcon,
+  KeyboardIcon, CritiqueIcon, BatchIcon, EvalIcon,
 } from './icons.jsx';
 
 // Components (extracted modules) — heavy ones are lazy-loaded for code splitting
 const PDFPreviewModal = lazy(() => import('./PDFPreviewModal.jsx').then(m => ({ default: m.PDFPreviewModal })));
 import {
   DrawerLogo, HistoryView, SavedView, TemplatesView, UsageView, AnalyticsView,
-  ChainView, BatchView, HelpView, SettingsView, ImportExportModal,
+  ChainView, BatchView, EvalView, HelpView, SettingsView, ImportExportModal,
 } from './LeftRailViews.jsx';
 import {
-  PIIWarningModal, TemplateVariablesModal, ShareModal,
+  PIIWarningModal, TemplateVariablesModal, ShareModal, CodeExportModal,
   PromptDiffPanel, ConfirmDialog, ToastList, ShortcutsModal, OnboardingModal,
 } from './Modals.jsx';
 import { LandingPage } from './LandingPage.jsx';
@@ -56,6 +56,7 @@ const LEFT_RAIL_ITEMS = [
   { id: 'analytics',     label: 'Analytics',             icon: ChartIcon          },
   { id: 'chain',         label: 'Prompt Chain',          icon: ChainIcon          },
   { id: 'batch',         label: 'Batch Refine',          icon: BatchIcon          },
+  { id: 'eval',          label: 'Prompt Eval',           icon: EvalIcon           },
   { id: 'usage',         label: 'Usage & cost',          icon: UsageIcon          },
   { id: 'help',          label: 'Help & Documentation',  icon: HelpIcon           },
   { id: 'settings',      label: 'Settings',              icon: SettingsIcon       },
@@ -68,6 +69,7 @@ function App() {
   const [submittedPrompt, setSubmittedPrompt] = useState('');
   const [submittedFeedback, setSubmittedFeedback] = useState('');
   const [category, setCategory] = useState('general');
+  const [promptType, setPromptType] = useState('user'); // 'user' | 'system'
   const [improvedPrompt, setImprovedPrompt] = useState('');
   const [changes, setChanges] = useState([]);
   const [scores, setScores] = useState(null);
@@ -101,6 +103,7 @@ function App() {
   const speechSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
 
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [codeModalOpen, setCodeModalOpen] = useState(false);
 
   // Run Prompt panel state.
   // - currentConvo: the active conversation (null if none started yet)
@@ -1031,6 +1034,8 @@ function App() {
           feedback: feedback || undefined,
           dimensions: activeDimensions.length !== SCORE_DIMENSIONS.length ? activeDimensions : undefined,
           customInstructions: settings.customInstructions?.trim() || undefined,
+          targetModel: settings.targetModel || undefined,
+          promptType: promptType === 'system' ? 'system' : undefined,
         },
         signal: controller.signal,
         onChunk: (text) => {
@@ -1940,6 +1945,12 @@ function App() {
                 onSaveEntry={saveToHistory}
               />
             )}
+            {activeView === 'eval' && (
+              <EvalView
+                initialPrompt={displayImproved || submittedPrompt}
+                model={settings.testModel}
+              />
+            )}
             {activeView === 'usage' && <UsageView usage={usage} onClear={clearUsage} />}
             {activeView === 'help' && <HelpView />}
             {activeView === 'settings' && (
@@ -2108,6 +2119,10 @@ function App() {
                               <button className="export-dropdown-item" onClick={handleExportSlack}>
                                 <span className="export-dropdown-icon">💬</span>
                                 Post to Slack
+                              </button>
+                              <button className="export-dropdown-item" onClick={() => { setExportDropdownOpen(false); setCodeModalOpen(true); }}>
+                                <span className="export-dropdown-icon">{'</>'}</span>
+                                Export as code
                               </button>
                             </div>
                           )}
@@ -2304,6 +2319,41 @@ function App() {
               ))}
             </div>
 
+            <div className="composer-chips composer-chips-secondary">
+              <div className="prompt-type-toggle" role="group" aria-label="Prompt type">
+                <button
+                  type="button"
+                  className={`chip ${promptType === 'user' ? 'active' : ''}`}
+                  onClick={() => setPromptType('user')}
+                  disabled={busy}
+                  title="Refine as a one-off user prompt"
+                >
+                  User prompt
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${promptType === 'system' ? 'active' : ''}`}
+                  onClick={() => setPromptType('system')}
+                  disabled={busy}
+                  title="Refine as a system prompt (role, rules, output contract, guardrails)"
+                >
+                  System prompt
+                </button>
+              </div>
+              <label className="target-model-select" title="Tailor the refined prompt to a destination model's idioms">
+                <span>Optimize for</span>
+                <select
+                  value={settings.targetModel || ''}
+                  onChange={(e) => updateSettings({ targetModel: e.target.value })}
+                  disabled={busy}
+                >
+                  {TARGET_MODELS.map((t) => (
+                    <option key={t.id || 'none'} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <textarea
               ref={textareaRef}
               value={roughPrompt}
@@ -2457,6 +2507,15 @@ function App() {
           improved={improvedPrompt}
           changes={changes}
           onClose={() => setShareModalOpen(false)}
+        />
+      )}
+
+      {codeModalOpen && (
+        <CodeExportModal
+          prompt={displayImproved}
+          model={settings.targetModel || settings.model}
+          onClose={() => setCodeModalOpen(false)}
+          onToast={addToast}
         />
       )}
 

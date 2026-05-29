@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { CompareIcon, ChevronDownIcon, CheckIcon, CloseIcon } from './icons.jsx';
 import { MODELS, SCORE_DIMENSIONS } from './constants.js';
-import { modelShortName, computeCost, formatCost, formatLatency, averageScore } from './utils.js';
+import { modelShortName, computeCost, formatCost, formatLatency, averageScore, recommendModel } from './utils.js';
 
 // RadarChart is needed inline for ComparisonColumn
 function SmallRadarChart({ scoreSet, variant }) {
@@ -229,6 +229,18 @@ export function ComparisonStrip({
 
   const columns = [primaryColumn, ...comparison.columns];
 
+  // Cost optimizer: among the completed, error-free columns, recommend the
+  // cheapest model whose quality is within tolerance of the best.
+  const recommendation = recommendModel(
+    columns
+      .filter((c) => c.complete && !c.error && c.scores?.refined)
+      .map((c) => ({
+        modelId: c.modelId,
+        quality: averageScore(c.scores.refined),
+        cost: c.usage ? computeCost(c.modelId, c.usage) : null,
+      }))
+  );
+
   return (
     <div className="compare-strip">
       <div className="compare-strip-header">
@@ -244,6 +256,17 @@ export function ComparisonStrip({
           <CloseIcon />
         </button>
       </div>
+      {recommendation && columns.filter((c) => c.complete && !c.error).length > 1 && (
+        <div className="compare-recommendation">
+          <span className="compare-recommendation-badge">Best value</span>
+          <span className="compare-recommendation-text">
+            <strong>{modelShortName(recommendation.modelId)}</strong>
+            {recommendation.quality != null && ` · ${recommendation.quality.toFixed(1)}/5`}
+            {recommendation.cost != null && ` · ${formatCost(recommendation.cost)}`}
+            {' — '}{recommendation.reason}
+          </span>
+        </div>
+      )}
       <div className="compare-grid" data-cols={columns.length}>
         {columns.map((column) => (
           <ComparisonColumn key={column.modelId} column={column} onUseVersion={onUseVersion} />

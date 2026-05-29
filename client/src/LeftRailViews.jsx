@@ -16,6 +16,7 @@ import { formatTime, formatCost, formatLatency, modelShortName, makeId } from '.
 import { TEMPLATES } from './templates-content.js';
 import { HELP_CONTENT } from './help-content.js';
 import { exportMarkdown, exportJSON, exportCSV, importFile } from './io.js';
+import { streamEval } from './sse.js';
 
 /* ── DrawerLogo ──────────────────────────────────────────── */
 
@@ -1539,6 +1540,145 @@ export function BatchView({ model, category, onSaveEntry }) {
             ))}
           </div>
         )}
+      </div>
+    </>
+  );
+}
+
+/* ── EvalView ────────────────────────────────────────────── */
+
+export function EvalView({ initialPrompt, model }) {
+  const [prompt, setPrompt]   = useState(initialPrompt || '');
+  const [cases, setCases]     = useState([{ id: makeId(), input: '', expected: '' }]);
+  const [results, setResults] = useState({}); // id -> { output, status, pass, score, reason, error }
+  const [running, setRunning] = useState(false);
+  const abortRef = useRef(null);
+
+  function addCase()            { setCases(c => [...c, { id: makeId(), input: '', expected: '' }]); }
+  function removeCase(id)       { setCases(c => c.filter(x => x.id !== id)); }
+  function updateCase(id, k, v) { setCases(c => c.map(x => x.id === id ? { ...x, [k]: v } : x)); }
+
+  async function run() {
+    if (!prompt.trim() || cases.length === 0) return;
+    setRunning(true);
+    abortRef.current = new AbortController();
+    const init = {};
+    cases.forEach(c => { init[c.id] = { output: '', status: 'running', pass: null, score: null, reason: '', error: '' }; });
+    setResults(init);
+
+    try {
+      await streamEval({
+        url: `${API_URL}/api/eval`,
+        body: {
+          prompt: prompt.trim(),
+          model,
+          cases: cases.map(c => ({
+            id: c.id,
+            input: c.input.trim() || undefined,
+            expected: c.expected.trim() || undefined,
+          })),
+        },
+        signal: abortRef.current.signal,
+        onChunk:  (id, text) => setResults(prev => ({ ...prev, [id]: { ...prev[id], output: (prev[id]?.output || '') + text } })),
+        onGraded: (id, g)    => setResults(prev => ({ ...prev, [id]: { ...prev[id], pass: g.pass, score: g.score, reason: g.reason } })),
+        onDone:   (id)       => setResults(prev => ({ ...prev, [id]: { ...prev[id], status: 'done' } })),
+        onError:  (id, err)  => setResults(prev => id ? ({ ...prev, [id]: { ...prev[id], status: 'error', error: err } }) : prev),
+        onComplete: () => setRunning(false),
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error(err);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function stop() { abortRef.current?.abort(); setRunning(false); }
+
+  const graded = Object.values(results).filter(r => r.pass === true || r.pass === false);
+  const passed = graded.filter(r => r.pass === true).length;
+
+  return (
+    <>
+      <div className="drawer-head">
+        <h3>Prompt Eval</h3>
+        {graded.length > 0 && (
+          <span className="batch-progress-label">{passed}/{graded.length} passed</span>
+        )}
+      </div>
+      <div className="drawer-body">
+        <p className="settings-group-hint">
+          Run a prompt against test cases. Add an optional input per case and an expected result — cases with an
+          expectation are graded pass/fail by an LLM judge. Uses your test runner model ({modelShortName(model)}).
+        </p>
+
+        <label className="settings-label" style={{ marginTop: 8 }}>Prompt under test</label>
+        {initialPrompt && initialPrompt !== prompt && (
+          <button className="text-btn" style={{ marginBottom: 4 }} onClick={() => setPrompt(initialPrompt)}>
+            ↻ Use latest refined prompt
+          </button>
+        )}
+        <textarea
+          className="batch-textarea"
+          placeholder="The prompt you want to evaluate…"
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          rows={4}
+          disabled={running}
+        />
+
+        <div className="eval-cases" style={{ marginTop: 12 }}>
+          {cases.map((c, i) => (
+            <div key={c.id} className="eval-case-card">
+              <div className="eval-case-head">
+                <span className="batch-result-num">Case {i + 1}</span>
+                {cases.length > 1 && (
+                  <button className="batch-remove-btn" onClick={() => removeCase(c.id)} disabled={running} title="Remove case">×</button>
+                )}
+              </div>
+              <textarea
+                className="batch-textarea"
+                placeholder="Optional input (appended to the prompt)…"
+                value={c.input}
+                onChange={e => updateCase(c.id, 'input', e.target.value)}
+                rows={2}
+                disabled={running}
+              />
+              <textarea
+                className="batch-textarea"
+                placeholder="Expected result (leave blank to skip grading)…"
+                value={c.expected}
+                onChange={e => updateCase(c.id, 'expected', e.target.value)}
+                rows={2}
+                disabled={running}
+                style={{ marginTop: 6 }}
+              />
+              {results[c.id] && (
+                <div className={`eval-case-result eval-case-${results[c.id].status}`}>
+                  {(results[c.id].pass === true || results[c.id].pass === false) && (
+                    <span className={`eval-verdict ${results[c.id].pass ? 'pass' : 'fail'}`}>
+                      {results[c.id].pass ? '✓ Pass' : '✗ Fail'}
+                      {results[c.id].score != null && ` · ${results[c.id].score}/100`}
+                    </span>
+                  )}
+                  {results[c.id].output && <div className="batch-result-output">{results[c.id].output}</div>}
+                  {results[c.id].reason && <div className="eval-case-reason">{results[c.id].reason}</div>}
+                  {results[c.id].error && <div className="batch-result-error">{results[c.id].error}</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="batch-controls">
+          <button className="text-btn" onClick={addCase} disabled={running || cases.length >= 20}>+ Add case</button>
+          {running ? (
+            <button className="send-btn stop-btn" onClick={stop}>Stop</button>
+          ) : (
+            <button className="send-btn" onClick={run} disabled={!prompt.trim()}>
+              Run eval ({cases.length})
+            </button>
+          )}
+        </div>
       </div>
     </>
   );

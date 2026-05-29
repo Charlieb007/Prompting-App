@@ -7,7 +7,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShieldIcon, KeyIcon, CardIcon, ContactIcon, CloseIcon } from './icons.jsx';
 import { hasCriticalFindings, groupFindings, CATEGORY_META } from './scan.js';
-import { buildShareMarkdown, computeWordDiff } from './utils.js';
+import { buildShareMarkdown, computeWordDiff, buildCodeSnippet } from './utils.js';
+import { CODE_SNIPPET_LANGS } from './constants.js';
 
 /* ── PIIWarningModal ─────────────────────────────────────── */
 
@@ -167,6 +168,52 @@ export function ShareModal({ shareUrl, rough, improved, changes, onClose }) {
               {mdCopied ? '✓ Copied to clipboard' : 'Copy as Markdown'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── CodeExportModal ─────────────────────────────────────── */
+
+export function CodeExportModal({ prompt, model, onClose, onToast }) {
+  const [lang, setLang] = useState(CODE_SNIPPET_LANGS[0].id);
+  const [copied, setCopied] = useState(false);
+
+  const snippet = buildCodeSnippet(prompt, { lang, model });
+
+  async function copySnippet() {
+    await navigator.clipboard.writeText(snippet);
+    setCopied(true);
+    onToast?.('Code snippet copied');
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+        <div className="modal-head">
+          <h2>Export as code</h2>
+          <button className="modal-close" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="modal-body">
+          <p className="modal-section-hint">A ready-to-paste API call with your refined prompt embedded.</p>
+          <div className="code-lang-tabs">
+            {CODE_SNIPPET_LANGS.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className={`chip ${lang === l.id ? 'active' : ''}`}
+                onClick={() => setLang(l.id)}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <pre className="code-snippet"><code>{snippet}</code></pre>
+          <button className="send-btn" onClick={copySnippet}>
+            {copied ? 'Copied!' : 'Copy code'}
+          </button>
         </div>
       </div>
     </div>

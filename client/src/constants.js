@@ -3,7 +3,7 @@
  * No imports — pure data.
  */
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+export const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3001';
 
 export const CATEGORIES = [
   { id: 'general',    label: 'General'    },
@@ -73,7 +73,27 @@ export const DEFAULT_SETTINGS = {
   notionDatabaseId: '',
   slackWebhookUrl: '',
   customInstructions: '',
+  // '' = no target-model tailoring; otherwise a model id whose idioms the
+  // refined prompt should be optimized for (see targetModelGuidance on server).
+  targetModel: '',
 };
+
+// Destination presets for "optimize refined prompt for" — value is matched by
+// prefix on the server (claude*/gpt*/gemini*).
+export const TARGET_MODELS = [
+  { id: '',           label: 'No preference' },
+  { id: 'claude-opus-4-8', label: 'Claude (Anthropic)' },
+  { id: 'gpt-4',      label: 'GPT (OpenAI)' },
+  { id: 'gemini-pro', label: 'Gemini (Google)' },
+];
+
+// Languages offered by the "export as code" feature.
+export const CODE_SNIPPET_LANGS = [
+  { id: 'anthropic-python', label: 'Anthropic · Python' },
+  { id: 'anthropic-node',   label: 'Anthropic · Node' },
+  { id: 'openai-python',    label: 'OpenAI · Python' },
+  { id: 'curl',             label: 'curl' },
+];
 
 export const QUICK_STARTS = [
   { label: 'Draft an email',     category: 'writing',    text: 'Write an email to my team about the new project timeline.' },

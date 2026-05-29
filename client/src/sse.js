@@ -124,3 +124,22 @@ export async function streamCritique({ url, body, onChunk, onDone, onError, sign
     'critique-error': (p) => onError?.(p.error || 'Critique failed.'),
   });
 }
+
+export async function streamEval({ url, body, onChunk, onGraded, onDone, onError, onComplete, signal }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  await consumeSSE(response, {
+    'eval-start':    () => { /* noop */ },
+    'eval-chunk':    (p) => onChunk?.(p.id, p.text),
+    'eval-graded':   (p) => onGraded?.(p.id, p),
+    'eval-done':     (p) => onDone?.(p.id, p.usage, p.latencyMs),
+    'eval-error':    (p) => onError?.(p.id, p.error),
+    'eval-complete': ()  => onComplete?.(),
+    'error':         (p) => onError?.(null, p.error || 'Unknown error'),
+  });
+}
