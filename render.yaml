@@ -18,5 +18,13 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
 
+      # Upstash Redis for durable shared-prompt storage. Without these, shares
+      # fall back to an ephemeral file and are lost on restart/redeploy.
+      # Get both from the Upstash console (or the Vercel Marketplace integration).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
       - key: NODE_ENV
         value: production

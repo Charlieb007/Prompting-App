@@ -2,8 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import 'dotenv/config';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import {
@@ -12,22 +11,12 @@ import {
   REFINER_USER_TEMPLATE,
   FOLLOWUP_USER_TEMPLATE,
 } from './lib.js';
+import { initShareStore, saveShare, getShare } from './shareStore.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// DATA_DIR: use a persistent disk mount on Render, or fall back to __dirname for local dev.
+// DATA_DIR: file-fallback location for shares when Upstash Redis isn't configured.
 const DATA_DIR = process.env.DATA_DIR || __dirname;
-try { mkdirSync(DATA_DIR, { recursive: true }); } catch { /* already exists */ }
-const SHARES_FILE = join(DATA_DIR, 'shares.json');
-
-function loadShares() {
-  if (!existsSync(SHARES_FILE)) return {};
-  try { return JSON.parse(readFileSync(SHARES_FILE, 'utf8')); } catch { return {}; }
-}
-
-function saveShares(shares) {
-  writeFileSync(SHARES_FILE, JSON.stringify(shares, null, 2), 'utf8');
-}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -461,19 +450,10 @@ app.get('/api/health', (req, res) => {
 });
 
 /* ── Share routes ─────────────────────────────────────── */
+// Persistence is handled by shareStore.js (Upstash Redis when configured,
+// local file + memory otherwise). See initShareStore() at startup.
 
-// In-memory share cache: keeps shares available within a server session even
-// if the filesystem isn't persistent (Render free tier has no persistent disk).
-// Shares are also written to disk when DATA_DIR is configured, so they survive
-// restarts on plans that support persistent disks.
-const memoryShares = {};
-
-function getShares() {
-  const disk = loadShares();
-  return { ...disk, ...memoryShares };
-}
-
-app.post('/api/share', rateLimit, (req, res) => {
+app.post('/api/share', rateLimit, async (req, res) => {
   const { rough, improved, changes, scores, category, model } = req.body;
   if (!rough || !improved) {
     return res.status(400).json({ error: 'rough and improved are required.' });
@@ -481,15 +461,12 @@ app.post('/api/share', rateLimit, (req, res) => {
   const id = randomBytes(4).toString('hex');
   const entry = { id, rough, improved, changes, scores, category, model, createdAt: Date.now() };
 
-  // Keep in memory (survives Render's ephemeral filesystem within a session)
-  memoryShares[id] = entry;
-
-  // Also try to persist to disk (works when DATA_DIR is set)
   try {
-    const shares = loadShares();
-    shares[id] = entry;
-    saveShares(shares);
-  } catch { /* ignore if filesystem is read-only */ }
+    await saveShare(entry);
+  } catch (err) {
+    console.error('Share save error:', err);
+    return res.status(500).json({ error: 'Could not save share.' });
+  }
 
   // RENDER_EXTERNAL_URL is set automatically by Render; APP_URL can be set manually.
   const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || `http://localhost:${PORT}`;
@@ -497,14 +474,14 @@ app.post('/api/share', rateLimit, (req, res) => {
   res.json({ id, url });
 });
 
-app.get('/api/share/:id', (req, res) => {
-  const entry = getShares()[req.params.id];
+app.get('/api/share/:id', async (req, res) => {
+  const entry = await getShare(req.params.id);
   if (!entry) return res.status(404).json({ error: 'Share not found.' });
   res.json(entry);
 });
 
-app.get('/share/:id', (req, res) => {
-  const entry = getShares()[req.params.id];
+app.get('/share/:id', async (req, res) => {
+  const entry = await getShare(req.params.id);
   if (!entry) return res.status(404).send('<h1>Not found</h1><p>This shared prompt does not exist.</p>');
 
   const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -803,6 +780,9 @@ app.post('/api/eval', rateLimit, async (req, res) => {
   if (!res.writableEnded) res.end();
 });
 
+const shareStoreBackend = await initShareStore({ dataDir: DATA_DIR });
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Share storage: ${shareStoreBackend}${shareStoreBackend === 'file' ? ' (set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN for durable shares)' : ''}`);
 });
