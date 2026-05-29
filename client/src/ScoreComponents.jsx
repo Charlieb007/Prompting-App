@@ -91,16 +91,18 @@ export function LintHintsPanel({ hints, dismissed, onDismiss }) {
   if (visible.length === 0) return null;
 
   return (
-    <div className="lint-panel">
-      {visible.map(h => (
-        <div key={h.id} className={`lint-hint lint-hint-${h.severity}`}>
-          <div className="lint-hint-body">
-            <span className="lint-hint-title">{h.label}</span>
-            <span className="lint-hint-text">{h.message}</span>
-          </div>
-          <button className="lint-hint-dismiss" onClick={() => onDismiss(h.id)} aria-label="Dismiss">×</button>
-        </div>
-      ))}
+    <div className="lint-hints">
+      <ul className="lint-hints-list">
+        {visible.map(h => (
+          <li key={h.id} className={`lint-hint lint-hint-${h.severity}`}>
+            <div className="lint-hint-body">
+              <div className="lint-hint-label">{h.label}</div>
+              <div className="lint-hint-message">{h.message}</div>
+            </div>
+            <button className="lint-hint-dismiss" onClick={() => onDismiss(h.id)} aria-label="Dismiss">×</button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
