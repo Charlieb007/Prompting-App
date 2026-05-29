@@ -1,7 +1,7 @@
 /**
  * Modal dialogs for Prompt Refina:
  * PIIWarningModal, TemplateVariablesModal, ShareModal,
- * PromptDiffPanel, ConfirmDialog, ToastList.
+ * PromptDiffPanel, ConfirmDialog, ToastList, OnboardingModal.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -307,6 +307,93 @@ export function ToastList({ toasts, onDismiss }) {
           {t.message}
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── OnboardingModal ─────────────────────────────────────── */
+
+const STEPS = [
+  {
+    emoji: '👋',
+    title: 'Welcome to Prompt Refina',
+    body: 'Prompt Refina turns rough, vague AI prompts into well-structured ones that get better results. It takes seconds and works with any AI tool.',
+  },
+  {
+    emoji: '✍️',
+    title: 'Write your rough prompt',
+    body: "Don't overthink it — just describe what you need in plain language. Something like \"help me write an email\" or \"explain quantum computing\" works perfectly.",
+    tip: 'Tip: use {{variable}} placeholders for parts you want to fill in later.',
+  },
+  {
+    emoji: '✨',
+    title: 'Get a refined version',
+    body: 'Prompt Refina rewrites your prompt with specificity, audience, format, and constraints — then scores it across five quality dimensions with a full explanation of every change.',
+    tip: 'Tip: click "Iterate" to add follow-up feedback like "make it shorter" or "add examples".',
+  },
+  {
+    emoji: '🚀',
+    title: "You're ready to go!",
+    body: 'Explore the left panel for History, Saved prompts, Analytics, Prompt Chains, and more. Press ⌘+Enter (or Ctrl+Enter) to refine at any time.',
+    tip: 'Tip: try the multi-pass toggle to auto-refine your prompt 2–5 times in a row.',
+  },
+];
+
+export function OnboardingModal({ onClose }) {
+  const [step, setStep] = useState(0);
+  const isLast = step === STEPS.length - 1;
+
+  function finish() {
+    localStorage.setItem('prompt-refina-onboarded', '1');
+    onClose();
+  }
+
+  function next() {
+    if (isLast) finish();
+    else setStep(s => s + 1);
+  }
+
+  function skip() { finish(); }
+
+  const s = STEPS[step];
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal onboarding-modal" role="dialog" aria-modal="true">
+
+        {/* Progress dots */}
+        <div className="onboarding-dots">
+          {STEPS.map((_, i) => (
+            <button
+              key={i}
+              className={`onboarding-dot ${i === step ? 'active' : ''} ${i < step ? 'done' : ''}`}
+              onClick={() => setStep(i)}
+              aria-label={`Step ${i + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="onboarding-body">
+          <div className="onboarding-emoji">{s.emoji}</div>
+          <h2 className="onboarding-title">{s.title}</h2>
+          <p className="onboarding-text">{s.body}</p>
+          {s.tip && <div className="onboarding-tip">{s.tip}</div>}
+        </div>
+
+        {/* Actions */}
+        <div className="onboarding-actions">
+          {!isLast && (
+            <button className="text-btn onboarding-skip" onClick={skip}>
+              Skip tour
+            </button>
+          )}
+          <button className="btn-primary onboarding-next" onClick={next}>
+            {isLast ? 'Get started →' : 'Next →'}
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }

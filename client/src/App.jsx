@@ -36,8 +36,9 @@ import {
 } from './LeftRailViews.jsx';
 import {
   PIIWarningModal, TemplateVariablesModal, ShareModal,
-  PromptDiffPanel, ConfirmDialog, ToastList, ShortcutsModal,
+  PromptDiffPanel, ConfirmDialog, ToastList, ShortcutsModal, OnboardingModal,
 } from './Modals.jsx';
+import { LandingPage } from './LandingPage.jsx';
 import {
   SkeletonBar, ChangesSkeleton, ScoresSkeleton, ComparisonColumnSkeleton,
   LintHintsPanel, RoughPromptMessage, ChangesPanel, RadarChart, ScoresPanel,
@@ -173,6 +174,12 @@ function App() {
 
   // ── Keyboard shortcuts modal ───────────────────────────────
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // ── Landing page + onboarding ──────────────────────────────
+  const [showLanding, setShowLanding] = useState(
+    () => !localStorage.getItem('prompt-refina-seen-landing')
+  );
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // ── AI Critique ────────────────────────────────────────────
   const [critiqueOpen, setCritiqueOpen] = useState(false);
@@ -1729,6 +1736,19 @@ function App() {
     return groups.filter(g => g.items.length > 0);
   })();
 
+  // Show landing page for first-time visitors
+  if (showLanding) {
+    return (
+      <LandingPage onGetStarted={() => {
+        setShowLanding(false);
+        // Show onboarding tour only if they haven't seen it before
+        if (!localStorage.getItem('prompt-refina-onboarded')) {
+          setOnboardingOpen(true);
+        }
+      }} />
+    );
+  }
+
   return (
     <div className="shell">
       {/* ── Sidebar ─────────────────────────────────────────── */}
@@ -2497,6 +2517,8 @@ function App() {
       )}
 
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
+
+      {onboardingOpen && <OnboardingModal onClose={() => setOnboardingOpen(false)} />}
 
       <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>

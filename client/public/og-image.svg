@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#F5F1EB"/>
+
+  <!-- Background accent -->
+  <rect x="0" y="0" width="6" height="630" fill="#CD6F47"/>
+
+  <!-- Logo mark -->
+  <g transform="translate(80, 60)">
+    <svg viewBox="0 0 40 40" width="64" height="64" fill="none" stroke="#CD6F47" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 7 L34 7 L24 20 L24 33 L16 35 L16 20 Z"/>
+      <line x1="11" y1="13" x2="29" y2="13" opacity="0.5"/>
+    </svg>
+  </g>
+
+  <!-- App name -->
+  <text x="160" y="102" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="600" fill="#3D3D3A">Prompt Refina</text>
+
+  <!-- Main headline -->
+  <text x="80" y="240" font-family="Georgia, 'Times New Roman', serif" font-size="68" font-weight="600" fill="#3D3D3A">Turn rough prompts</text>
+  <text x="80" y="320" font-family="Georgia, 'Times New Roman', serif" font-size="68" font-weight="600" fill="#CD6F47">into ones that work.</text>
+
+  <!-- Subtext -->
+  <text x="80" y="400" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#73726C">Paste any rough idea. Get a well-structured prompt back</text>
+  <text x="80" y="440" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#73726C">in seconds — with scores, changes, and iteration tools.</text>
+
+  <!-- Pills -->
+  <rect x="80" y="500" width="200" height="48" rx="24" fill="#CD6F47" opacity="0.12"/>
+  <text x="180" y="530" font-family="system-ui, sans-serif" font-size="20" fill="#884325" text-anchor="middle" font-weight="500">Powered by Claude</text>
+
+  <rect x="300" y="500" width="200" height="48" rx="24" fill="#4F8A4A" opacity="0.12"/>
+  <text x="400" y="530" font-family="system-ui, sans-serif" font-size="20" fill="#2D5C2A" text-anchor="middle" font-weight="500">Free to try</text>
+
+  <rect x="520" y="500" width="230" height="48" rx="24" fill="#3D3D3A" opacity="0.08"/>
+  <text x="635" y="530" font-family="system-ui, sans-serif" font-size="20" fill="#3D3D3A" text-anchor="middle" font-weight="500">No account needed</text>
+
+  <!-- URL -->
+  <text x="1120" y="598" font-family="system-ui, sans-serif" font-size="22" fill="#9C9A92" text-anchor="end">promptrefina.vercel.app</text>
+</svg>
