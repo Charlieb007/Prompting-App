@@ -538,6 +538,23 @@ export const HELP_CONTENT = [
       { type: 'note', text: 'Accounts and the daily limit only apply when the deployment is configured with authentication. If it isn\'t, the app simply runs anonymously with no limit and no sign-in button.' },
     ],
   },
+  {
+    id: 'pro-plan',
+    title: 'Pro plan & upgrading',
+    body: [
+      { type: 'text', text: 'Prompt Refina has a Free and a Pro plan. Free (signed-in) covers everyday use; Pro removes limits and unlocks the power features.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Free', text: 'A daily refinement allowance, Sonnet/Haiku models, and the core refine + scorecard + follow-up workflow.' },
+          { label: 'Pro', text: 'Unlimited refinements, Opus (most capable) models, and the power features: Prompt Eval, model comparison, prompt chaining, and multi-pass.' },
+        ],
+      },
+      { type: 'step', n: 1, title: 'Upgrade', text: 'Open your account (bottom of the left sidebar) and click "Upgrade to Pro", or hit "Upgrade" on any prompt that a Pro feature shows. You\'re taken to Stripe Checkout to subscribe.' },
+      { type: 'step', n: 2, title: 'Manage your subscription', text: 'Once Pro, your account menu shows "Manage subscription" — update your card or cancel anytime via the Stripe customer portal.' },
+      { type: 'note', text: 'Billing is handled securely by Stripe; the app never sees your card details. Your plan and limits are enforced on the server.' },
+    ],
+  },
   // ─── Settings & integrations ─────────────────────────────
   {
     id: 'settings',
