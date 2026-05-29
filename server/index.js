@@ -12,7 +12,7 @@ import {
   FOLLOWUP_USER_TEMPLATE,
 } from './lib.js';
 import { initShareStore, saveShare, getShare } from './shareStore.js';
-import { supabaseAuthEnabled, getUserFromToken } from './serverSupabase.js';
+import { supabaseAuthEnabled, getUserFromToken, recordUsageEvent } from './serverSupabase.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -219,6 +219,7 @@ app.post('/api/improve', attachUser, rateLimit, async (req, res) => {
       usage: { inputTokens, outputTokens },
       latencyMs,
     });
+    recordUsageEvent(req.accessToken, req.user?.id, { model, inputTokens, outputTokens, latencyMs, kind: feedback ? 'follow-up' : 'refinement' });
   } catch (err) {
     if (abort.aborted()) return;
     console.error('Refinement error:', err);
@@ -302,6 +303,7 @@ app.post('/api/improve-compare', attachUser, rateLimit, async (req, res) => {
         usage: { inputTokens, outputTokens },
         latencyMs: Date.now() - startTime,
       });
+      recordUsageEvent(req.accessToken, req.user?.id, { model: modelId, inputTokens, outputTokens, latencyMs: Date.now() - startTime, kind: 'compare' });
     } catch (err) {
       console.error(`Comparison error for ${modelId}:`, err);
       sendEvent(res, 'model-error', { modelId, error: err.message || 'Failed.' });
@@ -356,6 +358,7 @@ app.post('/api/test-prompt', attachUser, rateLimit, async (req, res) => {
         usage: { inputTokens, outputTokens },
         latencyMs: Date.now() - startTime,
       });
+      recordUsageEvent(req.accessToken, req.user?.id, { model, inputTokens, outputTokens, latencyMs: Date.now() - startTime, kind: 'test' });
     } catch (err) {
       console.error(`Test error for ${id}:`, err);
       sendEvent(res, 'test-error', { id, error: err.message || 'Test failed.' });
@@ -440,6 +443,7 @@ app.post('/api/run-prompt', attachUser, rateLimit, async (req, res) => {
       usage: { inputTokens, outputTokens },
       latencyMs,
     });
+    recordUsageEvent(req.accessToken, req.user?.id, { model, inputTokens, outputTokens, latencyMs, kind: 'run' });
   } catch (err) {
     if (abort.aborted()) return;
     console.error('[run-prompt] ERROR:', err.message || err);
@@ -688,14 +692,14 @@ Rules:
 
     const finalMessage = await stream.finalMessage();
     const latencyMs = Date.now() - startTime;
+    const cInput = finalMessage.usage?.input_tokens || 0;
+    const cOutput = finalMessage.usage?.output_tokens || 0;
     abort.done();
     sendEvent(res, 'critique-done', {
-      usage: {
-        inputTokens: finalMessage.usage?.input_tokens || 0,
-        outputTokens: finalMessage.usage?.output_tokens || 0,
-      },
+      usage: { inputTokens: cInput, outputTokens: cOutput },
       latencyMs,
     });
+    recordUsageEvent(req.accessToken, req.user?.id, { model: critiqueModel, inputTokens: cInput, outputTokens: cOutput, latencyMs, kind: 'critique' });
 
   } catch (err) {
     if (abort.aborted()) return;
@@ -786,6 +790,7 @@ app.post('/api/eval', attachUser, rateLimit, async (req, res) => {
       }
 
       sendEvent(res, 'eval-done', { id, usage: { inputTokens, outputTokens }, latencyMs: Date.now() - startTime });
+      recordUsageEvent(req.accessToken, req.user?.id, { model, inputTokens, outputTokens, latencyMs: Date.now() - startTime, kind: 'eval' });
     } catch (err) {
       if (abort.aborted()) return;
       console.error(`Eval error for ${id}:`, err);

@@ -66,19 +66,8 @@ export async function cloudReplaceCollection(table, userId, items, idOf) {
   if (error) console.error(`cloud prune ${table} failed:`, error.message);
 }
 
-export async function cloudInsertUsage(userId, record) {
-  if (!supabase) return;
-  const { error } = await supabase.from('usage_events').insert({
-    user_id: userId,
-    model: record.model,
-    input_tokens: record.inputTokens || 0,
-    output_tokens: record.outputTokens || 0,
-    cost: record.costUSD ?? null,
-    kind: record.kind || null,
-    latency_ms: record.latencyMs ?? null,
-  });
-  if (error) console.error('cloud usage insert failed:', error.message);
-}
+// Usage metering is recorded server-side (see server recordUsageEvent), so the
+// client no longer writes usage_events directly.
 
 export async function cloudUpsertSettings(userId, data) {
   if (!supabase) return;

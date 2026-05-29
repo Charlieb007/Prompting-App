@@ -48,7 +48,7 @@ import { CompareInvite, ComparisonStrip } from './ComparisonPanels.jsx';
 import { ABTestInvite, ABTestPanel, FollowUpPanel } from './ABTestPanels.jsx';
 import { useSupabaseSession, AuthModal, AccountButton } from './Auth.jsx';
 import { isSupabaseConfigured } from './supabase.js';
-import { cloudFetchAll, cloudReplaceCollection, cloudInsertUsage, cloudUpsertSettings } from './cloudStore.js';
+import { cloudFetchAll, cloudReplaceCollection, cloudUpsertSettings } from './cloudStore.js';
 
 /* ── Left-rail items (uses icon components — stays in App.jsx) ── */
 
@@ -511,7 +511,8 @@ function App() {
       lsSet(STORAGE_USAGE, JSON.stringify(next));
       return next;
     });
-    if (user) cloudInsertUsage(user.id, record);
+    // Cloud usage is recorded server-side (trustworthy metering) on each AI
+    // route; the local state above is just for immediate in-session display.
   }
 
   function clearUsage() {
