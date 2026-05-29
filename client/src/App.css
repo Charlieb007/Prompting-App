@@ -6805,7 +6805,7 @@ kbd {
 .sidebar-account-label { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-account-menu {
   position: absolute; bottom: calc(100% + 6px); left: 8px; right: 8px;
-  background: var(--bg-elevated, #fff);
+  background: var(--bg-surface);
   border: 0.5px solid var(--border-soft); border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   padding: 6px; z-index: 20;
