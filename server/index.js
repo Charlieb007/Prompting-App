@@ -12,7 +12,7 @@ import {
   FOLLOWUP_USER_TEMPLATE,
 } from './lib.js';
 import { initShareStore, saveShare, getShare } from './shareStore.js';
-import { supabaseAuthEnabled, getUserFromToken, recordUsageEvent } from './serverSupabase.js';
+import { supabaseAuthEnabled, getUserFromToken, recordUsageEvent, getPlanLimits, refinementGate } from './serverSupabase.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -145,6 +145,18 @@ app.post('/api/improve', attachUser, rateLimit, async (req, res) => {
   }
   if (prompt.length > 10000) {
     return res.status(400).json({ error: 'Prompt too long. Max 10,000 characters.' });
+  }
+
+  // Free-plan daily cap (authoritative; Pro is unlimited; anonymous is gated
+  // client-side). Fails open if Supabase auth isn't configured.
+  if (req.user) {
+    const gate = await refinementGate(req.accessToken, req.user.id);
+    if (!gate.allowed) {
+      return res.status(429).json({
+        error: `You've reached the free plan's ${gate.limit} refinements/day. Upgrade to Pro for unlimited refinements.`,
+        code: 'plan_limit',
+      });
+    }
   }
 
   setupSSE(res);
@@ -470,6 +482,11 @@ app.post('/api/run-prompt', attachUser, rateLimit, async (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
+});
+
+// Public: current daily refinement limits (admin-editable via app_config).
+app.get('/api/limits', async (req, res) => {
+  res.json(await getPlanLimits());
 });
 
 /* ── Share routes ─────────────────────────────────────── */

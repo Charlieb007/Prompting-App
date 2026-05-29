@@ -43,7 +43,7 @@ export const STORAGE_ANON_COUNT    = 'prompt-refina-anon-refinements';
 // VITE_ANON_REFINEMENT_LIMIT; set very high to effectively disable. Only
 // enforced when Supabase auth is configured — otherwise there's no way to sign
 // in, so the app stays unlimited/anonymous.
-export const ANON_REFINEMENT_LIMIT = Number(import.meta.env?.VITE_ANON_REFINEMENT_LIMIT) || 5;
+export const ANON_REFINEMENT_LIMIT = Number(import.meta.env?.VITE_ANON_REFINEMENT_LIMIT) || 10;
 
 export const MAX_HISTORY       = 20;
 export const MAX_USAGE_RECORDS = 500;

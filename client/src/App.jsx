@@ -132,8 +132,19 @@ function App() {
   // Anonymous trial gate: count refinements run while logged out, resetting
   // daily. Only enforced when Supabase is configured (else there's no sign-in).
   const [anonRefinements, setAnonRefinements] = useState(readAnonCount);
+  // Daily limits come from the server (admin-editable in Supabase app_config),
+  // falling back to the built-in default until the fetch resolves.
+  const [limits, setLimits] = useState({ anonymousDailyRefinements: ANON_REFINEMENT_LIMIT });
+  const anonLimit = limits.anonymousDailyRefinements ?? ANON_REFINEMENT_LIMIT;
   const anonGateActive = isSupabaseConfigured && !user;
-  const anonRefinementsLeft = Math.max(0, ANON_REFINEMENT_LIMIT - anonRefinements);
+  const anonRefinementsLeft = Math.max(0, anonLimit - anonRefinements);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/limits`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && typeof d === 'object') setLimits(d); })
+      .catch(() => { /* keep defaults */ });
+  }, []);
 
   function bumpAnonRefinements() {
     // Read fresh from storage so the count restarts correctly across midnight.
@@ -1244,8 +1255,8 @@ function App() {
     if (!sourcePrompt.trim() || streaming || comparing) return;
 
     // Anonymous trial gate: once the cap is hit, prompt sign-in instead of refining.
-    if (anonGateActive && anonRefinements >= ANON_REFINEMENT_LIMIT) {
-      addToast(`You've used your ${ANON_REFINEMENT_LIMIT} free refinements for today. Sign in for unlimited.`, 'info');
+    if (anonGateActive && anonRefinements >= anonLimit) {
+      addToast(`You've used your ${anonLimit} free refinements for today. Sign in for unlimited.`, 'info');
       openAuth('signup');
       return;
     }
