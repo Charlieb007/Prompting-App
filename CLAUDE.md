@@ -54,8 +54,7 @@ npm run dev        # Vite dev server, port 5173
 Load unpacked from `extension/` in `chrome://extensions` with Developer Mode on.
 No build step — vanilla JS. The extension talks to `http://localhost:3001` by default.
 To point it elsewhere, set `window.PROMPT_REFINERY_CONFIG.apiUrl` in `extension/config.js`
-(this file must be loaded as a `<script>` in `popup.html` — currently it is NOT wired up,
-see Known Issues below).
+(loaded as a `<script>` in `popup.html` before `popup.js`).
 
 ---
 
@@ -63,8 +62,10 @@ see Known Issues below).
 
 | File | Role |
 |---|---|
-| `server/index.js` | Entire backend (~650 lines). All API routes, system prompt, SSE helpers, response parser, Notion/Slack export routes, share routes. |
-| `client/src/App.jsx` | Root React component (~2100 lines). All app state, event handlers, and main layout. Imports from all the modules below. |
+| `server/index.js` | Backend entrypoint (~720 lines). All API routes, rate limiting, SSE + abort helpers, Notion/Slack export, eval, share routes. |
+| `server/lib.js` | Pure refiner helpers: `buildSystemPrompt`, `parseRefinerResponse`, user templates, `targetModelGuidance`, `promptTypeGuidance`. Unit-tested (`lib.test.js`). |
+| `server/shareStore.js` | Share persistence: Upstash Redis when configured, file + memory fallback otherwise. |
+| `client/src/App.jsx` | Root React component (~2500 lines). All app state, event handlers, and main layout. Imports from all the modules below. |
 | `client/src/constants.js` | All application constants (MODELS, PRICING, STORAGE_*, DEFAULT_SETTINGS, etc.). No imports. |
 | `client/src/utils.js` | Pure utility functions (formatTime, computeCost, computeWordDiff, etc.). Imports from constants only. |
 | `client/src/sse.js` | SSE streaming client functions (consumeSSE, streamRefinement, etc.). No React deps. |
@@ -90,8 +91,13 @@ see Known Issues below).
 
 All routes stream responses over **Server-Sent Events (SSE)**. The `setupSSE` / `sendEvent` helpers handle headers and formatting.
 
+**Rate limiting:** all AI/export routes (everything except `/api/health` and the share GETs) pass through the in-memory per-IP `rateLimit` middleware in `server/index.js` (default 30 req/min, tunable via `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`). It's per-instance and resets on restart.
+
+**Abort:** streaming routes use `wireAbort(res)` to cancel the Anthropic call when the client disconnects (listens on response `close`, passes an `AbortSignal` to the SDK). `sendEvent` is a no-op once the response has ended.
+
 ### `POST /api/improve`
-Main refinement endpoint. Accepts `{ prompt, category, model, previousRefined?, feedback? }`.
+Main refinement endpoint. Accepts `{ prompt, category, model, previousRefined?, feedback?, dimensions?, customInstructions?, targetModel?, promptType? }`.
+`targetModel` tailors the refined output to a destination model's idioms (claude/gpt/gemini prefix); `promptType: 'system'` refines as a system prompt rather than a one-off request.
 
 SSE event sequence:
 1. `refined-chunk` — streaming text of the refined prompt (many events)
@@ -118,12 +124,24 @@ then `test-complete`.
 ### `POST /api/run-prompt`
 Multi-turn conversation. Accepts `{ messages: [{role, content}], model }`.
 Streams a single assistant turn. Emits `run-chunk`, `run-done`, `run-error`.
-Note: abort detection via `req.on('close')` was removed due to spurious fires during
-SSE header flush in Node 20 — if the client closes mid-stream, the Anthropic call
-finishes in the background. Low cost impact; tracked as a known issue.
+Client-disconnect cancellation is handled by `wireAbort` (see the Abort note above).
+
+### `POST /api/critique`
+AI critique of a prompt. Accepts `{ prompt, model? }` (defaults to Opus 4.8).
+Streams `critique-chunk`, then `critique-done` / `critique-error`.
+
+### `POST /api/eval`
+Prompt eval runner. Accepts `{ prompt, model?, judgeModel?, cases: [{id, input?, expected?}] }` (max 20 cases).
+Runs the prompt per case in parallel; cases with an `expected` are graded by an LLM judge.
+Emits `eval-chunk`, `eval-graded`, `eval-done`, `eval-error` per case, then `eval-complete`.
 
 ### `GET /api/health`
-Returns `{ ok: true, time: "..." }`. No auth.
+Returns `{ ok: true, time: "..." }`. No auth, not rate-limited.
+
+### Share routes
+`POST /api/share` (rate-limited), `GET /api/share/:id` (JSON), `GET /share/:id` (HTML page).
+Persistence lives in `server/shareStore.js` — Upstash Redis when `UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN` are set, else a local `shares.json` file + memory cache.
 
 ---
 
@@ -142,9 +160,11 @@ This allows streaming the refined text progressively while the JSON sections arr
 <<<END>>>
 ```
 
-`parseRefinerResponse()` in `server/index.js` extracts these sections via regex.
+`parseRefinerResponse()` in `server/lib.js` extracts these sections via regex.
 The server streams `REFINED_PROMPT` in real time as `refined-chunk` events, then emits
 `changes` and `scores` as complete JSON after the full response arrives.
+The pure refiner helpers (`buildSystemPrompt`, `parseRefinerResponse`, the user templates,
+and the `targetModelGuidance` / `promptTypeGuidance` builders) live in `server/lib.js` and are unit-tested.
 
 Score dimensions (5 total): `specificity`, `audience`, `format`, `constraints`, `examples`
 Each scored 1–5 with a rationale string.
@@ -288,20 +308,18 @@ The modal offers: in-browser preview (`<iframe>`), open in new tab, download wit
 
 ## Known Issues & Tech Debt
 
-1. **`extension/config.js` not loaded** — `popup.js` reads `window.PROMPT_REFINERY_CONFIG.apiUrl`
-   but `config.js` is never loaded as a `<script>` in `popup.html`. The URL defaults to
-   `http://localhost:3001`. Fix: add `<script src="config.js"></script>` before `popup.js` in `popup.html`.
-
-2. **`/api/run-prompt` abort detection removed** — `req.on('close')` fires spuriously during SSE
-   header flush in Node 20, causing the stream to exit immediately. Anthropic calls now finish in
-   the background after client disconnect. Low cost impact; proper AbortSignal-based fix pending.
-
-3. **Junk files at repo root** — `span`, `spanfirst-child`, `spanfirst-of-type` (and their `._` macOS
-   metadata counterparts) are filesystem artifacts. Safe to delete. They appear in `git status` as
-   untracked and should be added to `.gitignore` or removed.
-
-4. **Pricing data hardcoded** — `PRICING` map in `constants.js` and the disclaimer in `UsageView` reference
+1. **Pricing data hardcoded** — `PRICING` map in `constants.js` and the disclaimer in `UsageView` reference
    "May 2026" rates. These need manual updates when Anthropic changes pricing.
+
+2. **Per-user data is browser-only** — history, saved, settings, usage, and conversations live in
+   `localStorage` (not synced, capped, lost if cleared). Migrating this server-side is the planned
+   accounts/DB phase (prerequisite for monetization + collaboration).
+
+3. **Rate limiter is per-instance** — `rateLimit` uses an in-memory bucket, so limits aren't shared
+   across multiple instances and reset on restart. Fine for the single-instance Render deployment.
+
+_Resolved (kept for history): extension `config.js` is now wired in `popup.html`; `/api/run-prompt`
+abort is fixed via `wireAbort`; repo-root junk files removed._
 
 ---
 
