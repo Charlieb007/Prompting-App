@@ -127,20 +127,12 @@ export function AuthModal({ onClose, initialMode = 'signin' }) {
   );
 }
 
-export function AccountButton({ user, expanded, onSignIn }) {
+export function AccountButton({ user, expanded }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // No auth backend configured → no account UI at all (pure anonymous mode).
-  if (!isSupabaseConfigured) return null;
-
-  if (!user) {
-    return (
-      <button className="sidebar-account-btn" onClick={onSignIn} title="Sign in">
-        <span className="sidebar-account-avatar" aria-hidden="true">↪</span>
-        {expanded && <span className="sidebar-account-label">Sign in</span>}
-      </button>
-    );
-  }
+  // Sign-in lives in the content-area CTA, not the sidebar. The sidebar only
+  // shows the account row (with sign-out) once the user is signed in.
+  if (!isSupabaseConfigured || !user) return null;
 
   const email = user.email || 'Account';
   const initial = (email[0] || 'U').toUpperCase();

@@ -2013,15 +2013,11 @@ function App() {
           </div>
         )}
 
-        {/* Account — only render the footer when auth is actually available,
-            so there's no empty bar when Supabase isn't configured. */}
-        {isSupabaseConfigured && (
+        {/* Account row (sign-out) — only when signed in. Sign-in itself lives
+            in the content-area CTA, not here. */}
+        {isSupabaseConfigured && user && (
           <div className="sidebar-footer">
-            <AccountButton
-              user={user}
-              expanded={railExpanded}
-              onSignIn={() => openAuth('signin')}
-            />
+            <AccountButton user={user} expanded={railExpanded} />
           </div>
         )}
       </nav>
@@ -2530,13 +2526,6 @@ function App() {
                     </span>
                     {promptComplexity.label}
                   </span>
-                )}
-                {!isRecording && anonGateActive && (
-                  <button type="button" className="anon-quota" onClick={() => openAuth('signup')}>
-                    {anonRefinementsLeft > 0
-                      ? `${anonRefinementsLeft} free refinement${anonRefinementsLeft === 1 ? '' : 's'} left today · sign in for unlimited`
-                      : "Daily free limit reached · sign in for unlimited"}
-                  </button>
                 )}
               </span>
               <button
