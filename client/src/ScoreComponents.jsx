@@ -95,8 +95,8 @@ export function LintHintsPanel({ hints, dismissed, onDismiss }) {
       {visible.map(h => (
         <div key={h.id} className={`lint-hint lint-hint-${h.severity}`}>
           <div className="lint-hint-body">
-            <span className="lint-hint-title">{h.title}</span>
-            <span className="lint-hint-text">{h.text}</span>
+            <span className="lint-hint-title">{h.label}</span>
+            <span className="lint-hint-text">{h.message}</span>
           </div>
           <button className="lint-hint-dismiss" onClick={() => onDismiss(h.id)} aria-label="Dismiss">×</button>
         </div>

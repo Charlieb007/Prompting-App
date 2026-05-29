@@ -2011,14 +2011,17 @@ function App() {
           </div>
         )}
 
-        {/* Account (renders only when Supabase is configured) */}
-        <div className="sidebar-footer">
-          <AccountButton
-            user={user}
-            expanded={railExpanded}
-            onSignIn={() => setAuthModalOpen(true)}
-          />
-        </div>
+        {/* Account — only render the footer when auth is actually available,
+            so there's no empty bar when Supabase isn't configured. */}
+        {isSupabaseConfigured && (
+          <div className="sidebar-footer">
+            <AccountButton
+              user={user}
+              expanded={railExpanded}
+              onSignIn={() => setAuthModalOpen(true)}
+            />
+          </div>
+        )}
       </nav>
 
       {/* ── Main area ───────────────────────────────────────── */}
