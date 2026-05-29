@@ -48,6 +48,9 @@ cd client
 npm install
 npm run dev        # Vite dev server, port 5173
 # Optional: set VITE_API_URL in client/.env to point at a non-localhost backend
+# Optional: set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY to enable accounts/cloud sync.
+#   Leave blank to run fully anonymously (local-only). Auth is always opt-in —
+#   logged-out visitors keep working via localStorage. See client/src/supabase.js.
 ```
 
 ### Browser Extension
