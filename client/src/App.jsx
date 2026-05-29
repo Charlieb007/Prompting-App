@@ -45,6 +45,7 @@ import {
 } from './ScoreComponents.jsx';
 import { CompareInvite, ComparisonStrip } from './ComparisonPanels.jsx';
 import { ABTestInvite, ABTestPanel, FollowUpPanel } from './ABTestPanels.jsx';
+import { useSupabaseSession, AuthModal, AccountButton } from './Auth.jsx';
 
 /* ── Left-rail items (uses icon components — stays in App.jsx) ── */
 
@@ -104,6 +105,10 @@ function App() {
 
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
+
+  // Auth (anonymous-first): session is null when logged out or unconfigured.
+  const { user } = useSupabaseSession();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   // Run Prompt panel state.
   // - currentConvo: the active conversation (null if none started yet)
@@ -1895,6 +1900,15 @@ function App() {
             ))}
           </div>
         )}
+
+        {/* Account (renders only when Supabase is configured) */}
+        <div className="sidebar-footer">
+          <AccountButton
+            user={user}
+            expanded={railExpanded}
+            onSignIn={() => setAuthModalOpen(true)}
+          />
+        </div>
       </nav>
 
       {/* ── Main area ───────────────────────────────────────── */}
@@ -2518,6 +2532,8 @@ function App() {
           onToast={addToast}
         />
       )}
+
+      {authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
 
       {pdfModalOpen && (
         <Suspense fallback={<div className="modal-backdrop"><div className="modal" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:200}}>Loading PDF export…</div></div>}>
