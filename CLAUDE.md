@@ -200,7 +200,7 @@ Available Claude models (defined in `MODELS` array in `App.jsx`):
 GPT-4, GPT-4 Turbo, Gemini Pro are listed as "coming soon" placeholders (not wired up).
 
 Pricing in `PRICING` map (per MTok, as of May 2026 — update when rates change):
-- Opus 4.8 / Opus 4.6: $5.00 input / $25.00 output
+- Opus 4.8 / Opus 4.6: $5.00 input / $25.00 output (Opus 4.8 rates confirmed)
 - Sonnet 4.6: $3.00 input / $15.00 output
 - Haiku 4.5: $1.00 input / $5.00 output
 
