@@ -530,7 +530,7 @@ export const HELP_CONTENT = [
       {
         type: 'list',
         items: [
-          { label: 'What syncs', text: 'History, saved prompts, settings, and usage records. (Conversations currently remain local.)' },
+          { label: 'What syncs', text: 'History, saved prompts, conversations, settings, and usage records — all kept in sync across your devices.' },
           { label: 'Fresh start', text: 'A new account starts empty — anonymous data created before signing in is not auto-imported. Export to JSON beforehand if you want to carry it over manually.' },
           { label: 'Free refinements per day', text: 'Without an account you can run a limited number of refinements per day (5 by default; the limit resets at local midnight). A hint by the composer shows how many you have left, and you\'ll be prompted to sign in for unlimited refining once the daily limit is reached.' },
         ],

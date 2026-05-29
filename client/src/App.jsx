@@ -186,6 +186,8 @@ function App() {
       const u = localStorage.getItem(STORAGE_USAGE);    setUsage(u ? JSON.parse(u) : []);
       const st = localStorage.getItem(STORAGE_SETTINGS);
       setSettings(st ? { ...DEFAULT_SETTINGS, ...JSON.parse(st) } : DEFAULT_SETTINGS);
+      const cv = localStorage.getItem(STORAGE_CONVERSATIONS); setConversations(cv ? JSON.parse(cv) : []);
+      const cc = localStorage.getItem(STORAGE_CURRENT_CONVO); setCurrentConvo(cc ? JSON.parse(cc) : null);
     } catch { /* ignore corrupt local data */ }
   }
 
@@ -203,6 +205,8 @@ function App() {
             setHistory(data.history || []);
             setSaved(data.saved || []);
             setUsage(data.usage || []);
+            setConversations(data.conversations || []);
+            setCurrentConvo(null); // resume from the list on a fresh device
             if (data.settings) setSettings(s => ({ ...DEFAULT_SETTINGS, ...data.settings }));
           }
           setCloudSyncReady(true);
@@ -231,6 +235,16 @@ function App() {
     const t = setTimeout(() => cloudUpsertSettings(user.id, settings), 700);
     return () => clearTimeout(t);
   }, [settings, user, cloudSyncReady]);
+
+  useEffect(() => {
+    if (!user || !cloudSyncReady) return;
+    // Sync archived conversations plus the active one (if it has messages), so a
+    // mid-chat reload on another device can resume it from the list.
+    const active = currentConvo?.messages?.length ? [currentConvo] : [];
+    const all = [...active, ...conversations.filter(c => c.id !== currentConvo?.id)];
+    const t = setTimeout(() => cloudReplaceCollection('conversations', user.id, all, c => c.id), 700);
+    return () => clearTimeout(t);
+  }, [conversations, currentConvo, user, cloudSyncReady]);
 
   // Run Prompt panel state.
   // - currentConvo: the active conversation (null if none started yet)
@@ -390,14 +404,14 @@ function App() {
 
   useEffect(() => {
     if (currentConvo) {
-      localStorage.setItem(STORAGE_CURRENT_CONVO, JSON.stringify(currentConvo));
+      lsSet(STORAGE_CURRENT_CONVO, JSON.stringify(currentConvo));
     } else {
-      localStorage.removeItem(STORAGE_CURRENT_CONVO);
+      lsRemove(STORAGE_CURRENT_CONVO);
     }
   }, [currentConvo]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_CONVERSATIONS, JSON.stringify(conversations));
+    lsSet(STORAGE_CONVERSATIONS, JSON.stringify(conversations));
   }, [conversations]);
 
   useEffect(() => {
