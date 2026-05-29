@@ -13,6 +13,7 @@ import {
 } from './lib.js';
 import { initShareStore, saveShare, getShare } from './shareStore.js';
 import { supabaseAuthEnabled, getUserFromToken, recordUsageEvent, getPlanLimits, refinementGate } from './serverSupabase.js';
+import { stripeEnabled, createCheckout, createPortal, handleWebhook } from './stripe.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,11 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Stripe webhook needs the RAW body for signature verification, so it must be
+// registered before the JSON body parser.
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
 app.use(express.json({ limit: '10mb' }));
 
 // Trust the first proxy hop (Render/Vercel sit in front) so req.ip reflects
@@ -487,6 +493,33 @@ app.get('/api/health', (req, res) => {
 // Public: current daily refinement limits (admin-editable via app_config).
 app.get('/api/limits', async (req, res) => {
   res.json(await getPlanLimits());
+});
+
+/* ── Billing (Stripe) ─────────────────────────────────── */
+
+// Start a Pro subscription checkout; returns a hosted Stripe Checkout URL.
+app.post('/api/billing/checkout', attachUser, async (req, res) => {
+  if (!stripeEnabled) return res.status(503).json({ error: 'Billing is not configured yet.' });
+  if (!req.user) return res.status(401).json({ error: 'Sign in to upgrade.' });
+  try {
+    const url = await createCheckout(req.user);
+    res.json({ url });
+  } catch (err) {
+    console.error('Checkout error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not start checkout.' });
+  }
+});
+
+// Open the Stripe Customer Portal (manage/cancel/update card).
+app.post('/api/billing/portal', attachUser, async (req, res) => {
+  if (!stripeEnabled) return res.status(503).json({ error: 'Billing is not configured yet.' });
+  if (!req.user) return res.status(401).json({ error: 'Sign in to manage your subscription.' });
+  try {
+    const url = await createPortal(req.user);
+    res.json({ url });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'No subscription to manage.' });
+  }
 });
 
 /* ── Share routes ─────────────────────────────────────── */

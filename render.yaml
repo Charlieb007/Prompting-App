@@ -34,5 +34,21 @@ services:
       - key: SUPABASE_ANON_KEY
         sync: false
 
+      # Service-role key — ONLY used by the Stripe webhook to update profiles
+      # (no user token in a webhook). Server-only secret; never expose client-side.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # Stripe billing. Without STRIPE_SECRET_KEY the billing endpoints are inert.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Where Checkout/portal return to (your Vercel URL).
+      - key: APP_FRONTEND_URL
+        sync: false
+
       - key: NODE_ENV
         value: production
