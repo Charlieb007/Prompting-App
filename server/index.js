@@ -660,7 +660,7 @@ app.post('/api/critique', async (req, res) => {
   const { prompt, model } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt is required.' });
 
-  const critiqueModel = model || 'claude-opus-4-7';
+  const critiqueModel = model || 'claude-opus-4-8';
 
   setupSSE(res);
 

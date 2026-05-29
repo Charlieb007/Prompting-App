@@ -41,11 +41,11 @@ export const MAX_HISTORY       = 20;
 export const MAX_USAGE_RECORDS = 500;
 export const MAX_CONVERSATIONS = 50;
 
-export const DEFAULT_MODEL = 'claude-opus-4-7';
+export const DEFAULT_MODEL = 'claude-opus-4-8';
 
 export const MODELS = [
-  { id: 'claude-opus-4-7',           name: 'Claude Opus 4.7',   shortName: 'Opus 4.7',   provider: 'Anthropic', description: 'Most capable. Best for complex prompts.',          available: true },
-  { id: 'claude-sonnet-4-6',         name: 'Claude Sonnet 4.6', shortName: 'Sonnet 4.6', provider: 'Anthropic', description: 'Balanced speed and capability.',                   available: true, isDefault: true },
+  { id: 'claude-opus-4-8',           name: 'Claude Opus 4.8',   shortName: 'Opus 4.8',   provider: 'Anthropic', description: 'Most capable. Best for complex prompts.',          available: true, isDefault: true },
+  { id: 'claude-sonnet-4-6',         name: 'Claude Sonnet 4.6', shortName: 'Sonnet 4.6', provider: 'Anthropic', description: 'Balanced speed and capability.',                   available: true },
   { id: 'claude-opus-4-6',           name: 'Claude Opus 4.6',   shortName: 'Opus 4.6',   provider: 'Anthropic', description: 'Previous flagship. Still highly capable.',         available: true },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5',  shortName: 'Haiku 4.5',  provider: 'Anthropic', description: 'Fastest and cheapest. Good for simple prompts.',  available: true },
   { id: 'gpt-4',        name: 'GPT-4',        shortName: 'GPT-4',        provider: 'OpenAI', description: 'Coming soon', available: false },
@@ -54,7 +54,7 @@ export const MODELS = [
 ];
 
 export const PRICING = {
-  'claude-opus-4-7':           { input: 5.00, output: 25.00 },
+  'claude-opus-4-8':           { input: 5.00, output: 25.00 },
   'claude-opus-4-6':           { input: 5.00, output: 25.00 },
   'claude-sonnet-4-6':         { input: 3.00, output: 15.00 },
   'claude-haiku-4-5-20251001': { input: 1.00, output:  5.00 },

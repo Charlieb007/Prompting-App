@@ -192,15 +192,15 @@ Four typed wrappers sit on top: `streamRefinement`, `streamComparison`, `streamT
 ## Models & Pricing
 
 Available Claude models (defined in `MODELS` array in `App.jsx`):
-- `claude-opus-4-7` — most capable
-- `claude-sonnet-4-6` — default for refinement
+- `claude-opus-4-8` — most capable, default for refinement
+- `claude-sonnet-4-6` — balanced speed and capability
 - `claude-opus-4-6` — previous flagship
 - `claude-haiku-4-5-20251001` — fastest/cheapest
 
 GPT-4, GPT-4 Turbo, Gemini Pro are listed as "coming soon" placeholders (not wired up).
 
 Pricing in `PRICING` map (per MTok, as of May 2026 — update when rates change):
-- Opus 4.7 / Opus 4.6: $5.00 input / $25.00 output
+- Opus 4.8 / Opus 4.6: $5.00 input / $25.00 output
 - Sonnet 4.6: $3.00 input / $15.00 output
 - Haiku 4.5: $1.00 input / $5.00 output
 

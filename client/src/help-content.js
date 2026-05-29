@@ -484,7 +484,7 @@ export const HELP_CONTENT = [
           { label: 'Prompt linter', text: 'Toggle the real-time hint panel below the composer on or off. Useful to disable if you\'re an experienced prompter who finds the hints distracting.' },
           { label: 'Privacy / PII scanner', text: 'Toggle the pre-send scan for credentials, financial data, and contact info. Disable only if you\'re confident your prompts never contain sensitive data.' },
           { label: 'Voice input', text: 'Toggle the microphone button. Auto-disabled if your browser doesn\'t support the Web Speech API.' },
-          { label: 'Refinement model', text: 'Which Claude model handles /api/improve (the main refinement). Opus 4.7 is the default — most capable, best for complex prompts. Sonnet 4.6 is a fast, lower-cost alternative.' },
+          { label: 'Refinement model', text: 'Which Claude model handles /api/improve (the main refinement). Opus 4.8 is the default — most capable, best for complex prompts. Sonnet 4.6 is a fast, lower-cost alternative.' },
           { label: 'Test runner model', text: 'Which model handles A/B tests, conversations, and prompt chains. Independent from the refinement model — mix and match as needed.' },
           { label: 'Scoring dimensions', text: 'Add custom dimensions or hide built-in ones. See the Custom scoring dimensions section for details.' },
           { label: 'Custom refinement instructions', text: 'Standing guidance appended to every refinement. See the Custom refinement instructions section for details.' },

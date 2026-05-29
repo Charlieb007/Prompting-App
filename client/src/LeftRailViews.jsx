@@ -1372,7 +1372,7 @@ export function BatchView({ model, category, onSaveEntry }) {
         const response = await fetch(`${API_URL}/api/improve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, category: category || 'general', model: model || 'claude-opus-4-7' }),
+          body: JSON.stringify({ prompt, category: category || 'general', model: model || 'claude-opus-4-8' }),
           signal: abortRef.current.signal,
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1407,7 +1407,7 @@ export function BatchView({ model, category, onSaveEntry }) {
               if (eventName === 'done') {
                 const entry = {
                   rough: prompt, improved: refined, changes: [], scores: null,
-                  category: category || 'general', model: model || 'claude-opus-4-7',
+                  category: category || 'general', model: model || 'claude-opus-4-8',
                   timestamp: Date.now(),
                 };
                 onSaveEntry?.(entry);
