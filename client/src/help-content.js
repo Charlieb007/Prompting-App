@@ -10,7 +10,7 @@ export const HELP_CONTENT = [
       { type: 'step', n: 3, title: 'Submit and watch it stream', text: 'Click the send button or press Cmd+Enter (Ctrl+Enter on Windows/Linux). The refined prompt streams in word by word. When it finishes, a "What changed" list and a quality scorecard appear below.' },
       { type: 'step', n: 4, title: 'Copy and use it', text: 'Click the copy button next to the refined prompt to copy it to your clipboard. Paste it into ChatGPT, Claude.ai, Gemini, or whichever AI tool you\'re using.' },
       { type: 'step', n: 5, title: 'Iterate if needed', text: 'Use the follow-up panel beneath the output to adjust: "make it shorter," "add an example," "make the tone more formal." Each follow-up refines the already-refined version.' },
-      { type: 'note', text: 'Everything is stored locally in your browser. Nothing leaves your machine except the API call to Anthropic to do the actual refinement.' },
+      { type: 'note', text: 'By default everything is stored locally in your browser — nothing leaves your machine except the API call to Anthropic. Optionally sign in (see Accounts & cloud sync) to sync your prompts across devices.' },
     ],
   },
   {
@@ -28,9 +28,27 @@ export const HELP_CONTENT = [
           { label: 'Stop button', text: 'While the model is streaming, the send button turns into a stop button. Click it at any time to abort the current refinement.' },
           { label: 'Mic button', text: 'Dictate your rough prompt using the microphone. Appears when voice input is enabled in Settings and your browser supports speech recognition.' },
           { label: 'Keyboard shortcut button', text: 'The keyboard icon next to the mic opens the shortcuts cheat-sheet (also reachable via Shift+?).' },
+          { label: 'Prompt type (User / System)', text: 'A toggle in the second row of chips. "User prompt" refines a one-off request; "System prompt" refines it as an assistant\'s standing configuration — role, behavioural rules, output contract, and guardrails. See "Target model & prompt type".' },
+          { label: 'Optimize for', text: 'A dropdown that tailors the refined prompt to a destination model\'s idioms (Claude / GPT / Gemini), or "No preference". See "Target model & prompt type".' },
         ],
       },
       { type: 'text', text: 'The composer also supports template variables — placeholders written as {{variable_name}} that get filled in interactively before the prompt is sent. See the Template variables section for details.' },
+    ],
+  },
+  {
+    id: 'target-and-type',
+    title: 'Target model & prompt type',
+    body: [
+      { type: 'text', text: 'Two composer controls change how a prompt is refined, beyond the category chips: who the refined prompt is for (target model) and what kind of prompt it is (user vs system).' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Optimize for (target model)', text: 'Pick the model you\'ll actually paste the refined prompt into. "Claude" produces XML-tagged sections and explicit role framing; "GPT" leans on Markdown headings and numbered lists; "Gemini" favours concise natural-language steps. "No preference" (the default) refines model-agnostically. The setting is remembered between sessions.' },
+          { label: 'User prompt (default)', text: 'Refines a single, one-off request — the normal mode for most tasks.' },
+          { label: 'System prompt', text: 'Treats the input as an AI assistant\'s persistent configuration. The refiner focuses on defining the assistant\'s role and scope, behavioural rules and tone, the output contract, and guardrails for edge cases — rather than collapsing it into one task.' },
+        ],
+      },
+      { type: 'note', text: 'Both controls apply to the next refinement (and follow-ups). They work with every other feature — comparison, A/B test, multi-pass, and so on.' },
     ],
   },
   {
@@ -201,6 +219,7 @@ export const HELP_CONTENT = [
           { label: 'Side-by-side columns', text: 'Each model gets its own column showing: the refined prompt text, the list of changes it made, its score, estimated cost for that call, and latency.' },
           { label: 'Use this version', text: 'Click "Use this version" in any column to swap that model\'s output into your main view, as if it had been the original refinement. The history and scorecard all update.' },
           { label: 'Cost awareness', text: 'Opus models are significantly more expensive than Haiku. Running a 4-model comparison with Opus can cost 4× a standard refinement — glance at the Usage panel afterwards if you\'re tracking spend.' },
+          { label: 'Best value recommendation', text: 'Once two or more columns finish, a "Best value" banner appears above the grid. It recommends the cheapest model whose quality is within a small tolerance of the best-scoring one — a quick cost-optimizer answer to "which model gives me the most for the least?"' },
         ],
       },
       { type: 'note', text: 'Comparison runs all selected models in parallel, so latency is roughly the slowest model\'s latency rather than the sum. Four models in parallel is about the same wall-clock time as one.' },
@@ -215,6 +234,18 @@ export const HELP_CONTENT = [
       { type: 'step', n: 2, title: 'Choose a mode', text: '"Run both" sends the rough prompt and the refined prompt in parallel — two API calls, two columns of output. "Refined only" sends just the refined prompt, useful when you only want to see what it produces.' },
       { type: 'step', n: 3, title: 'Compare the outputs', text: 'Read both columns and judge which is more useful, accurate, or on-target for your use case. The structural improvement in the prompt often — but not always — translates into a better response.' },
       { type: 'note', text: 'The test runner model (set in Settings, independent from the refinement model) determines which model produces the test outputs. Use Haiku for fast/cheap tests, Opus for high-stakes ones.' },
+    ],
+  },
+  {
+    id: 'prompt-eval',
+    title: 'Prompt Eval',
+    body: [
+      { type: 'text', text: 'The Prompt Eval panel (checklist icon in the sidebar) runs a prompt against a set of test cases and grades the results — turning "this prompt reads well" into "this prompt actually does what I need." It reuses the test runner model.' },
+      { type: 'step', n: 1, title: 'Open Prompt Eval', text: 'Click the Prompt Eval icon in the left sidebar. The prompt under test is prefilled with your latest refined prompt; click "↻ Use latest refined prompt" to refresh it, or edit it freely.' },
+      { type: 'step', n: 2, title: 'Add test cases', text: 'Each case has an optional Input (appended to the prompt for that run) and an optional Expected result. Click "+ Add case" for more — up to 20 per run.' },
+      { type: 'step', n: 3, title: 'Run the eval', text: 'Click "Run eval." Each case runs in parallel; the output streams into its card. Cases that have an Expected result are graded pass/fail with a 0–100 score by an LLM judge, with a one-line reason.' },
+      { type: 'step', n: 4, title: 'Read the scorecard', text: 'The header shows how many graded cases passed. Use it to compare prompt variants, or to catch regressions after editing a prompt.' },
+      { type: 'note', text: 'Cases without an Expected result still run (you just see the output, no grade). Grading is a second API call per graded case — factor that into cost on large evals.' },
     ],
   },
   // ─── Power features ──────────────────────────────────────
@@ -275,7 +306,23 @@ export const HELP_CONTENT = [
           { label: 'Copy as Markdown', text: 'Creates a formatted markdown block containing the original prompt, the refined version, and the list of changes. Paste it into Notion, Slack, GitHub, or any markdown-capable tool.' },
         ],
       },
-      { type: 'note', text: 'Share links are stored in a local file on your machine (server/shares.json) and require the backend server to be running to view. They\'re intended for sharing between tabs and quick team handoffs, not for public internet sharing.' },
+      { type: 'note', text: 'Share links require the backend to be running. By default they\'re kept in memory plus a local file; when the server is configured with Upstash Redis they persist durably across restarts and deploys. Either way, they\'re meant for quick handoffs, not high-traffic public distribution.' },
+    ],
+  },
+  {
+    id: 'export-code',
+    title: 'Export as code',
+    body: [
+      { type: 'text', text: 'Turn a refined prompt into a ready-to-paste API call. Open the export dropdown (the external-link icon in the refined prompt header) and choose "Export as code."' },
+      {
+        type: 'list',
+        items: [
+          { label: 'Language tabs', text: 'Switch between Anthropic (Python), Anthropic (Node), OpenAI (Python), and curl. Each snippet embeds your refined prompt, correctly escaped, in a working request.' },
+          { label: 'Model', text: 'The snippet uses your "Optimize for" target model when set, otherwise your refinement model.' },
+          { label: 'Copy', text: 'Click "Copy code" to copy the snippet to your clipboard, then paste it straight into your project.' },
+        ],
+      },
+      { type: 'note', text: 'The snippet is a starting scaffold — it assumes your API key is available via the standard environment variable (e.g. ANTHROPIC_API_KEY) and uses a sensible default max_tokens you can adjust.' },
     ],
   },
   // ─── Quality & safety tools ──────────────────────────────
@@ -469,6 +516,26 @@ export const HELP_CONTENT = [
         ],
       },
       { type: 'note', text: 'Each refinement, comparison column, A/B test call, and conversation message is tracked separately. Multi-model comparisons are the fastest way to accumulate cost — each model is a separate billable API call.' },
+    ],
+  },
+  // ─── Accounts ────────────────────────────────────────────
+  {
+    id: 'accounts',
+    title: 'Accounts & cloud sync',
+    body: [
+      { type: 'text', text: 'Signing in is optional. Prompt Refina works fully without an account — your data stays in your browser. Creating an account adds cloud sync so your prompts follow you across devices and browsers.' },
+      { type: 'step', n: 1, title: 'Sign in', text: 'Click "Sign in" at the bottom of the left sidebar. Choose Continue with Google, Continue with GitHub, or create an account with an email address and password.' },
+      { type: 'step', n: 2, title: 'Work as normal', text: 'Once signed in, your History, Saved prompts, Settings, and Usage are stored in the cloud instead of just this browser. Changes sync automatically as you work.' },
+      { type: 'step', n: 3, title: 'Sign out', text: 'Click your account (same spot in the sidebar) and choose Sign out. The app reverts to the local, anonymous store.' },
+      {
+        type: 'list',
+        items: [
+          { label: 'What syncs', text: 'History, saved prompts, settings, and usage records. (Conversations currently remain local.)' },
+          { label: 'Fresh start', text: 'A new account starts empty — anonymous data created before signing in is not auto-imported. Export to JSON beforehand if you want to carry it over manually.' },
+          { label: 'Free refinements per day', text: 'Without an account you can run a limited number of refinements per day (5 by default; the limit resets at local midnight). A hint by the composer shows how many you have left, and you\'ll be prompted to sign in for unlimited refining once the daily limit is reached.' },
+        ],
+      },
+      { type: 'note', text: 'Accounts and the daily limit only apply when the deployment is configured with authentication. If it isn\'t, the app simply runs anonymously with no limit and no sign-in button.' },
     ],
   },
   // ─── Settings & integrations ─────────────────────────────
