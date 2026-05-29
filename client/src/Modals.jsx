@@ -174,6 +174,52 @@ export function ShareModal({ shareUrl, rough, improved, changes, onClose }) {
   );
 }
 
+/* ── UpgradeModal ────────────────────────────────────────── */
+
+export function UpgradeModal({ reason, signedIn, onUpgrade, onSignIn, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleUpgrade() {
+    setBusy(true); setError('');
+    try {
+      await onUpgrade();
+    } catch (err) {
+      setError(err.message || 'Could not start checkout.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="modal-head">
+          <h2>Upgrade to Pro</h2>
+          <button className="modal-close" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="modal-body">
+          {reason && <p className="modal-section-hint">{reason}</p>}
+          <ul className="upgrade-benefits">
+            <li>Unlimited refinements — no daily cap</li>
+            <li>Access to Opus (most capable) models</li>
+            <li>Power features: prompt eval, model comparison, chains, multi-pass</li>
+          </ul>
+          {error && <div className="auth-error">{error}</div>}
+          {signedIn ? (
+            <button className="send-btn auth-submit" onClick={handleUpgrade} disabled={busy}>
+              {busy ? 'Starting checkout…' : 'Upgrade to Pro'}
+            </button>
+          ) : (
+            <button className="send-btn auth-submit" onClick={() => { onClose(); onSignIn?.(); }}>
+              Sign in to upgrade
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── CodeExportModal ─────────────────────────────────────── */
 
 export function CodeExportModal({ prompt, model, onClose, onToast }) {

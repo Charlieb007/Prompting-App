@@ -17,6 +17,7 @@ import { CloseIcon } from './icons.jsx';
 export function useSupabaseSession() {
   const [session, setSession] = useState(null);
   const [ready, setReady] = useState(!isSupabaseConfigured);
+  const [plan, setPlan] = useState('free');
 
   useEffect(() => {
     if (!supabase) return;
@@ -30,7 +31,17 @@ export function useSupabaseSession() {
     return () => { active = false; sub.subscription.unsubscribe(); };
   }, []);
 
-  return { session, user: session?.user ?? null, ready };
+  // Load the user's plan (free | pro) from their profile.
+  const userId = session?.user?.id;
+  useEffect(() => {
+    if (!supabase || !userId) { setPlan('free'); return; }
+    let active = true;
+    supabase.from('profiles').select('plan').eq('id', userId).maybeSingle()
+      .then(({ data }) => { if (active) setPlan(data?.plan || 'free'); });
+    return () => { active = false; };
+  }, [userId]);
+
+  return { session, user: session?.user ?? null, ready, plan };
 }
 
 export function AuthModal({ onClose, initialMode = 'signin' }) {
@@ -127,7 +138,7 @@ export function AuthModal({ onClose, initialMode = 'signin' }) {
   );
 }
 
-export function AccountButton({ user, expanded }) {
+export function AccountButton({ user, expanded, plan = 'free', onUpgrade, onManage }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Sign-in lives in the content-area CTA, not the sidebar. The sidebar only
@@ -136,6 +147,7 @@ export function AccountButton({ user, expanded }) {
 
   const email = user.email || 'Account';
   const initial = (email[0] || 'U').toUpperCase();
+  const isPro = plan === 'pro';
 
   async function signOut() {
     setMenuOpen(false);
@@ -147,12 +159,19 @@ export function AccountButton({ user, expanded }) {
       {menuOpen && (
         <div className="sidebar-account-menu">
           <div className="sidebar-account-email">{email}</div>
+          <div className={`plan-badge plan-badge-${isPro ? 'pro' : 'free'}`}>{isPro ? 'Pro' : 'Free'} plan</div>
+          {isPro ? (
+            <button className="sidebar-account-action" onClick={() => { setMenuOpen(false); onManage?.(); }}>Manage subscription</button>
+          ) : (
+            <button className="sidebar-account-action upgrade" onClick={() => { setMenuOpen(false); onUpgrade?.(); }}>Upgrade to Pro ✨</button>
+          )}
           <button className="sidebar-account-signout" onClick={signOut}>Sign out</button>
         </div>
       )}
       <button className="sidebar-account-btn" onClick={() => setMenuOpen(o => !o)} title={email}>
         <span className="sidebar-account-avatar" aria-hidden="true">{initial}</span>
         {expanded && <span className="sidebar-account-label">{email}</span>}
+        {expanded && isPro && <span className="plan-badge plan-badge-pro plan-badge-inline">Pro</span>}
       </button>
     </div>
   );

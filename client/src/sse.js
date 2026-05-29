@@ -6,7 +6,10 @@
 export async function consumeSSE(response, handlers) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Server returned an error.');
+    const err = new Error(data.error || 'Server returned an error.');
+    err.code = data.code;
+    err.status = response.status;
+    throw err;
   }
 
   const reader  = response.body.getReader();

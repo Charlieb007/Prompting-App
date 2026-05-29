@@ -36,7 +36,7 @@ import {
   ChainView, BatchView, EvalView, HelpView, SettingsView, ImportExportModal,
 } from './LeftRailViews.jsx';
 import {
-  PIIWarningModal, TemplateVariablesModal, ShareModal, CodeExportModal,
+  PIIWarningModal, TemplateVariablesModal, ShareModal, CodeExportModal, UpgradeModal,
   PromptDiffPanel, ConfirmDialog, ToastList, ShortcutsModal, OnboardingModal,
 } from './Modals.jsx';
 import { LandingPage } from './LandingPage.jsx';
@@ -49,6 +49,7 @@ import { ABTestInvite, ABTestPanel, FollowUpPanel } from './ABTestPanels.jsx';
 import { useSupabaseSession, AuthModal, AccountButton } from './Auth.jsx';
 import { isSupabaseConfigured } from './supabase.js';
 import { cloudFetchAll, cloudReplaceCollection, cloudUpsertSettings } from './cloudStore.js';
+import { startCheckout, openBillingPortal } from './billing.js';
 
 /* ── Left-rail items (uses icon components — stays in App.jsx) ── */
 
@@ -124,10 +125,27 @@ function App() {
   const [codeModalOpen, setCodeModalOpen] = useState(false);
 
   // Auth (anonymous-first): session is null when logged out or unconfigured.
-  const { user, session } = useSupabaseSession();
+  const { user, session, plan } = useSupabaseSession();
+  const isPro = plan === 'pro';
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('signin');
   function openAuth(mode = 'signin') { setAuthModalMode(mode); setAuthModalOpen(true); }
+
+  // Billing / upgrade gate.
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState('');
+  function openUpgrade(reason = '') { setUpgradeReason(reason); setUpgradeOpen(true); }
+  // Returns true if the user may use a Pro feature; otherwise prompts to upgrade.
+  function requirePro(reason) {
+    if (isPro) return true;
+    openUpgrade(reason);
+    return false;
+  }
+  async function handleUpgrade() { await startCheckout(session?.access_token); }
+  async function handleManage() {
+    try { await openBillingPortal(session?.access_token); }
+    catch (err) { addToast(err.message || 'Could not open billing portal.', 'error'); }
+  }
 
   // Anonymous trial gate: count refinements run while logged out, resetting
   // daily. Only enforced when Supabase is configured (else there's no sign-in).
@@ -978,6 +996,10 @@ function App() {
       if (opening) setPanelMode('conversation');
       return;
     }
+    // Pro-gated power-feature panels.
+    if ((id === 'eval' || id === 'chain') && activeView !== id) {
+      if (!requirePro(`${id === 'eval' ? 'Prompt Eval' : 'Prompt chaining'} is a Pro feature.`)) return;
+    }
     setActiveView(activeView === id ? null : id);
   }
 
@@ -1226,8 +1248,12 @@ function App() {
       });
     } catch (err) {
       if (err.name !== 'AbortError') {
-        setError(err.message || 'Something went wrong. Is the backend running?');
-        console.error(err);
+        if (err.code === 'plan_limit' || err.code === 'plan_feature') {
+          openUpgrade(err.message);
+        } else {
+          setError(err.message || 'Something went wrong. Is the backend running?');
+          console.error(err);
+        }
       }
     } finally {
       setLoading(false);
@@ -1305,6 +1331,7 @@ function App() {
 
   async function runComparison(modelIds) {
     if (!submittedPrompt.trim() || comparing || streaming) return;
+    if (!requirePro('Model comparison is a Pro feature.')) return;
 
     setComparing(true);
     setError('');
@@ -2035,7 +2062,7 @@ function App() {
             in the content-area CTA, not here. */}
         {isSupabaseConfigured && user && (
           <div className="sidebar-footer">
-            <AccountButton user={user} expanded={railExpanded} />
+            <AccountButton user={user} expanded={railExpanded} plan={plan} onUpgrade={() => openUpgrade()} onManage={handleManage} />
           </div>
         )}
       </nav>
@@ -2597,7 +2624,10 @@ function App() {
             <button
               type="button"
               className={`multipass-toggle ${multiPassEnabled ? 'on' : ''}`}
-              onClick={() => setMultiPassEnabled(v => !v)}
+              onClick={() => {
+                if (!multiPassEnabled && !requirePro('Multi-pass refinement is a Pro feature.')) return;
+                setMultiPassEnabled(v => !v);
+              }}
               title="Auto-refine multiple passes for a more polished result"
             >
               <LoopIcon />
@@ -2679,6 +2709,16 @@ function App() {
       )}
 
       {authModalOpen && <AuthModal initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />}
+
+      {upgradeOpen && (
+        <UpgradeModal
+          reason={upgradeReason}
+          signedIn={Boolean(user)}
+          onUpgrade={handleUpgrade}
+          onSignIn={() => openAuth('signup')}
+          onClose={() => setUpgradeOpen(false)}
+        />
+      )}
 
       {pdfModalOpen && (
         <Suspense fallback={<div className="modal-backdrop"><div className="modal" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:200}}>Loading PDF export…</div></div>}>

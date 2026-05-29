@@ -163,6 +163,12 @@ app.post('/api/improve', attachUser, rateLimit, async (req, res) => {
         code: 'plan_limit',
       });
     }
+    if (gate.plan === 'free' && /^claude-opus/.test(model)) {
+      return res.status(429).json({
+        error: 'Opus models are a Pro feature. Upgrade to Pro to use them.',
+        code: 'plan_feature',
+      });
+    }
   }
 
   setupSSE(res);
