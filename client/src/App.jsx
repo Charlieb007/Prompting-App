@@ -126,6 +126,8 @@ function App() {
   // Auth (anonymous-first): session is null when logged out or unconfigured.
   const { user } = useSupabaseSession();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('signin');
+  function openAuth(mode = 'signin') { setAuthModalMode(mode); setAuthModalOpen(true); }
 
   // Anonymous trial gate: count refinements run while logged out, resetting
   // daily. Only enforced when Supabase is configured (else there's no sign-in).
@@ -1242,7 +1244,7 @@ function App() {
     // Anonymous trial gate: once the cap is hit, prompt sign-in instead of refining.
     if (anonGateActive && anonRefinements >= ANON_REFINEMENT_LIMIT) {
       addToast(`You've used your ${ANON_REFINEMENT_LIMIT} free refinements for today. Sign in for unlimited.`, 'info');
-      setAuthModalOpen(true);
+      openAuth('signup');
       return;
     }
 
@@ -2018,7 +2020,7 @@ function App() {
             <AccountButton
               user={user}
               expanded={railExpanded}
-              onSignIn={() => setAuthModalOpen(true)}
+              onSignIn={() => openAuth('signin')}
             />
           </div>
         )}
@@ -2431,6 +2433,22 @@ function App() {
         </div>
 
         <div className="composer-wrap">
+          {anonGateActive && (
+            <div className="auth-cta">
+              <div className="auth-cta-text">
+                <strong>Save your work &amp; refine without limits</strong>
+                <span>
+                  {anonRefinementsLeft > 0
+                    ? `${anonRefinementsLeft} free refinement${anonRefinementsLeft === 1 ? '' : 's'} left today. Sign in to sync across devices and remove the daily cap.`
+                    : 'You’ve hit today’s free limit. Sign in to keep refining and sync your prompts across devices.'}
+                </span>
+              </div>
+              <div className="auth-cta-actions">
+                <button className="auth-cta-signin" onClick={() => openAuth('signin')}>Sign in</button>
+                <button className="auth-cta-signup" onClick={() => openAuth('signup')}>Sign up free</button>
+              </div>
+            </div>
+          )}
           <div className={`composer ${isRecording ? 'recording' : ''}`}>
             <div className="composer-chips">
               {CATEGORIES.map((c) => (
@@ -2514,7 +2532,7 @@ function App() {
                   </span>
                 )}
                 {!isRecording && anonGateActive && (
-                  <button type="button" className="anon-quota" onClick={() => setAuthModalOpen(true)}>
+                  <button type="button" className="anon-quota" onClick={() => openAuth('signup')}>
                     {anonRefinementsLeft > 0
                       ? `${anonRefinementsLeft} free refinement${anonRefinementsLeft === 1 ? '' : 's'} left today · sign in for unlimited`
                       : "Daily free limit reached · sign in for unlimited"}
@@ -2653,7 +2671,7 @@ function App() {
         />
       )}
 
-      {authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      {authModalOpen && <AuthModal initialMode={authModalMode} onClose={() => setAuthModalOpen(false)} />}
 
       {pdfModalOpen && (
         <Suspense fallback={<div className="modal-backdrop"><div className="modal" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:200}}>Loading PDF export…</div></div>}>

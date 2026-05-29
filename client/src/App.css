@@ -6826,3 +6826,48 @@ kbd {
   padding: 0; font-family: var(--font-sans);
 }
 .anon-quota:hover { text-decoration: underline; }
+
+/* ── Auth CTA banner (content area, anonymous users) ── */
+.auth-cta {
+  max-width: 760px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--accent-bg);
+  border: 0.5px solid rgba(205, 111, 71, 0.28);
+  border-radius: var(--r-lg, 12px);
+}
+.auth-cta-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.auth-cta-text strong { font-size: 13.5px; color: var(--text-primary); }
+.auth-cta-text span { font-size: 12px; color: var(--text-secondary); }
+.auth-cta-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.auth-cta-signin,
+.auth-cta-signup {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.auth-cta-signin {
+  background: transparent;
+  color: var(--accent-text);
+  border: 0.5px solid rgba(205, 111, 71, 0.4);
+}
+.auth-cta-signin:hover { background: rgba(205, 111, 71, 0.10); }
+.auth-cta-signup {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+}
+.auth-cta-signup:hover { background: var(--accent-hover); }
+@media (max-width: 640px) {
+  .auth-cta { flex-direction: column; align-items: stretch; }
+  .auth-cta-actions { justify-content: stretch; }
+  .auth-cta-signin, .auth-cta-signup { flex: 1; }
+}

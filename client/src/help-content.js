@@ -524,7 +524,7 @@ export const HELP_CONTENT = [
     title: 'Accounts & cloud sync',
     body: [
       { type: 'text', text: 'Signing in is optional. Prompt Refina works fully without an account — your data stays in your browser. Creating an account adds cloud sync so your prompts follow you across devices and browsers.' },
-      { type: 'step', n: 1, title: 'Sign in', text: 'Click "Sign in" at the bottom of the left sidebar. Choose Continue with Google, Continue with GitHub, or create an account with an email address and password.' },
+      { type: 'step', n: 1, title: 'Sign in', text: 'Click "Sign in" (or "Sign up free") — either from the prompt above the composer or the account row at the bottom of the left sidebar. Choose Continue with Google, Continue with GitHub, or create an account with an email address and password.' },
       { type: 'step', n: 2, title: 'Work as normal', text: 'Once signed in, your History, Saved prompts, Settings, and Usage are stored in the cloud instead of just this browser. Changes sync automatically as you work.' },
       { type: 'step', n: 3, title: 'Sign out', text: 'Click your account (same spot in the sidebar) and choose Sign out. The app reverts to the local, anonymous store.' },
       {

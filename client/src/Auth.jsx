@@ -33,8 +33,8 @@ export function useSupabaseSession() {
   return { session, user: session?.user ?? null, ready };
 }
 
-export function AuthModal({ onClose }) {
-  const [mode, setMode]         = useState('signin'); // 'signin' | 'signup'
+export function AuthModal({ onClose, initialMode = 'signin' }) {
+  const [mode, setMode]         = useState(initialMode); // 'signin' | 'signup'
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy]         = useState(false);
