@@ -1,15 +1,18 @@
--- Prompt Refina — accounts/DB phase, milestone 2.
+-- Prompt Refina — accounts/DB phase (milestones 2 & 4).
 -- Schema + Row-Level Security for per-user cloud sync (personal data only;
--- teams/collaboration come in a later phase).
+-- teams/collaboration come later).
 --
 -- How to run:
 --   • Supabase SQL editor: paste this whole file and run, OR
 --   • Supabase CLI: `supabase db push` (with this file under supabase/migrations/).
 --
+-- If you ran an earlier version of this file, drop the affected tables first
+-- (the project has no real data yet): the synced tables now use a client text
+-- id + a `data` jsonb payload so every client field round-trips losslessly.
+--
 -- Anonymous use is unaffected: logged-out visitors never touch these tables
--- (they stay on localStorage). RLS denies the `anon` role by default since no
--- anon policies are defined; only `authenticated` users can read/write, and
--- only their own rows.
+-- (they stay on localStorage). RLS denies the `anon` role; only `authenticated`
+-- users can read/write, and only their own rows.
 
 -- ── profiles (extends auth.users; holds plan for future monetization) ──
 create table if not exists public.profiles (
@@ -18,50 +21,30 @@ create table if not exists public.profiles (
   created_at  timestamptz not null default now()
 );
 
--- ── refinements (history) ──
+-- ── Synced collections: id is the client-supplied id; `data` holds the full
+--    app entry (lossless — changes/scores/pins/tags/folders/versions/etc.). ──
 create table if not exists public.refinements (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references auth.users(id) on delete cascade,
-  rough         text not null,
-  improved      text not null,
-  changes       jsonb not null default '[]'::jsonb,
-  scores        jsonb,
-  category      text default 'general',
-  model         text,
-  usage         jsonb,
-  latency_ms    integer,
-  is_follow_up  boolean not null default false,
-  feedback      text,
-  created_at    timestamptz not null default now()
-);
-
--- ── saved_prompts ──
-create table if not exists public.saved_prompts (
-  id          uuid primary key default gen_random_uuid(),
+  id          text primary key,
   user_id     uuid not null references auth.users(id) on delete cascade,
-  rough       text not null,
-  improved    text not null,
-  name        text default '',
-  folder      text,
-  category    text default 'general',
-  model       text,
-  changes     jsonb not null default '[]'::jsonb,
-  scores      jsonb,
+  data        jsonb not null,
   created_at  timestamptz not null default now()
 );
 
--- ── conversations (multi-turn run drawer) ──
-create table if not exists public.conversations (
-  id          uuid primary key default gen_random_uuid(),
+create table if not exists public.saved_prompts (
+  id          text primary key,
   user_id     uuid not null references auth.users(id) on delete cascade,
-  title       text default '',
-  messages    jsonb not null default '[]'::jsonb,
-  model       text,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  data        jsonb not null,
+  created_at  timestamptz not null default now()
 );
 
--- ── usage_events (cost/latency metering; basis for future billing) ──
+create table if not exists public.conversations (
+  id          text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  data        jsonb not null,
+  created_at  timestamptz not null default now()
+);
+
+-- ── usage_events (typed for metering / future billing; append-only) ──
 create table if not exists public.usage_events (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users(id) on delete cascade,
@@ -81,10 +64,10 @@ create table if not exists public.settings (
   updated_at  timestamptz not null default now()
 );
 
--- ── Indexes for the common per-user, recent-first queries ──
+-- ── Indexes for per-user, recent-first reads ──
 create index if not exists refinements_user_created_idx   on public.refinements   (user_id, created_at desc);
 create index if not exists saved_prompts_user_created_idx  on public.saved_prompts  (user_id, created_at desc);
-create index if not exists conversations_user_updated_idx  on public.conversations  (user_id, updated_at desc);
+create index if not exists conversations_user_created_idx  on public.conversations  (user_id, created_at desc);
 create index if not exists usage_events_user_created_idx   on public.usage_events   (user_id, created_at desc);
 
 -- ── Row-Level Security: each user sees only their own rows ──
@@ -95,35 +78,27 @@ alter table public.conversations enable row level security;
 alter table public.usage_events  enable row level security;
 alter table public.settings      enable row level security;
 
--- profiles & settings are keyed by the user id directly.
 drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles
-  for all to authenticated
-  using (auth.uid() = id) with check (auth.uid() = id);
+  for all to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
 drop policy if exists "own settings" on public.settings;
 create policy "own settings" on public.settings
-  for all to authenticated
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- data tables are keyed by user_id.
 drop policy if exists "own refinements" on public.refinements;
 create policy "own refinements" on public.refinements
-  for all to authenticated
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "own saved_prompts" on public.saved_prompts;
 create policy "own saved_prompts" on public.saved_prompts
-  for all to authenticated
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "own conversations" on public.conversations;
 create policy "own conversations" on public.conversations
-  for all to authenticated
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- usage_events: users may read and insert their own; updates/deletes are not
--- exposed (metering rows are append-only from the client's perspective).
+-- usage_events: read + insert own (append-only metering).
 drop policy if exists "read own usage" on public.usage_events;
 create policy "read own usage" on public.usage_events
   for select to authenticated using (auth.uid() = user_id);
@@ -158,7 +133,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ── Keep updated_at fresh ──
+-- ── Keep settings.updated_at fresh ──
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -166,11 +141,6 @@ begin
   return new;
 end;
 $$;
-
-drop trigger if exists conversations_set_updated_at on public.conversations;
-create trigger conversations_set_updated_at
-  before update on public.conversations
-  for each row execute function public.set_updated_at();
 
 drop trigger if exists settings_set_updated_at on public.settings;
 create trigger settings_set_updated_at

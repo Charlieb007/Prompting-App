@@ -36,6 +36,14 @@ export const STORAGE_CURRENT_CONVO = 'prompt-refina-current-convo';
 export const STORAGE_CONVERSATIONS = 'prompt-refina-conversations';
 export const STORAGE_FOLDERS       = 'prompt-refina-folders';
 export const STORAGE_CHAIN         = 'prompt-refina-chain';
+export const STORAGE_ANON_COUNT    = 'prompt-refina-anon-refinements';
+
+// How many refinements a logged-out visitor may run PER DAY before being asked
+// to sign in (a "try it" trial gate; resets at local midnight). Override with
+// VITE_ANON_REFINEMENT_LIMIT; set very high to effectively disable. Only
+// enforced when Supabase auth is configured — otherwise there's no way to sign
+// in, so the app stays unlimited/anonymous.
+export const ANON_REFINEMENT_LIMIT = Number(import.meta.env?.VITE_ANON_REFINEMENT_LIMIT) || 5;
 
 export const MAX_HISTORY       = 20;
 export const MAX_USAGE_RECORDS = 500;

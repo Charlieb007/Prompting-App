@@ -11,6 +11,7 @@ import {
   STORAGE_CURRENT_CONVO, STORAGE_CONVERSATIONS, STORAGE_FOLDERS, STORAGE_CHAIN,
   MAX_HISTORY, MAX_USAGE_RECORDS, MAX_CONVERSATIONS,
   DEFAULT_MODEL, DEFAULT_SETTINGS, QUICK_STARTS, TARGET_MODELS,
+  STORAGE_ANON_COUNT, ANON_REFINEMENT_LIMIT,
 } from './constants.js';
 import {
   formatTime, makeId, averageScore, modelShortName, computeCost, formatCost,
@@ -46,6 +47,8 @@ import {
 import { CompareInvite, ComparisonStrip } from './ComparisonPanels.jsx';
 import { ABTestInvite, ABTestPanel, FollowUpPanel } from './ABTestPanels.jsx';
 import { useSupabaseSession, AuthModal, AccountButton } from './Auth.jsx';
+import { isSupabaseConfigured } from './supabase.js';
+import { cloudFetchAll, cloudReplaceCollection, cloudInsertUsage, cloudUpsertSettings } from './cloudStore.js';
 
 /* ── Left-rail items (uses icon components — stays in App.jsx) ── */
 
@@ -64,6 +67,20 @@ const LEFT_RAIL_ITEMS = [
 ];
 
 /* ── App ─────────────────────────────────────────────────── */
+
+// Local-day key (YYYY-M-D) used to reset the anonymous refinement quota daily.
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+// Today's anonymous refinement count from localStorage (0 if it's a new day).
+function readAnonCount() {
+  try {
+    const obj = JSON.parse(localStorage.getItem(STORAGE_ANON_COUNT) || 'null');
+    return obj && obj.date === todayStr() ? (obj.count || 0) : 0;
+  } catch { return 0; }
+}
 
 function App() {
   const [roughPrompt, setRoughPrompt] = useState('');
@@ -109,6 +126,80 @@ function App() {
   // Auth (anonymous-first): session is null when logged out or unconfigured.
   const { user } = useSupabaseSession();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Anonymous trial gate: count refinements run while logged out, resetting
+  // daily. Only enforced when Supabase is configured (else there's no sign-in).
+  const [anonRefinements, setAnonRefinements] = useState(readAnonCount);
+  const anonGateActive = isSupabaseConfigured && !user;
+  const anonRefinementsLeft = Math.max(0, ANON_REFINEMENT_LIMIT - anonRefinements);
+
+  function bumpAnonRefinements() {
+    // Read fresh from storage so the count restarts correctly across midnight.
+    const next = readAnonCount() + 1;
+    localStorage.setItem(STORAGE_ANON_COUNT, JSON.stringify({ date: todayStr(), count: next }));
+    setAnonRefinements(next);
+  }
+
+  // ── Cloud sync (logged-in users) ───────────────────────────
+  // When logged in, personal data lives in Supabase. We load it on login,
+  // push changes (debounced) while signed in, and revert to the local store on
+  // sign-out. Gated on cloudSyncReady so the anonymous localStorage data is
+  // never pushed to a fresh account before the cloud load completes.
+  const [cloudSyncReady, setCloudSyncReady] = useState(false);
+  const prevUserIdRef = useRef(null);
+
+  function reloadLocal() {
+    try {
+      const h = localStorage.getItem(STORAGE_HISTORY);  setHistory(h ? JSON.parse(h) : []);
+      const s = localStorage.getItem(STORAGE_SAVED);    setSaved(s ? JSON.parse(s) : []);
+      const u = localStorage.getItem(STORAGE_USAGE);    setUsage(u ? JSON.parse(u) : []);
+      const st = localStorage.getItem(STORAGE_SETTINGS);
+      setSettings(st ? { ...DEFAULT_SETTINGS, ...JSON.parse(st) } : DEFAULT_SETTINGS);
+    } catch { /* ignore corrupt local data */ }
+  }
+
+  useEffect(() => {
+    const prevId = prevUserIdRef.current;
+    const curId = user?.id || null;
+    if (curId === prevId) return;
+    prevUserIdRef.current = curId;
+
+    if (curId) {
+      setCloudSyncReady(false);
+      cloudFetchAll(curId)
+        .then(data => {
+          if (data) {
+            setHistory(data.history || []);
+            setSaved(data.saved || []);
+            setUsage(data.usage || []);
+            if (data.settings) setSettings(s => ({ ...DEFAULT_SETTINGS, ...data.settings }));
+          }
+          setCloudSyncReady(true);
+        })
+        .catch(err => { console.error('Cloud load failed:', err); setCloudSyncReady(true); });
+    } else if (prevId) {
+      setCloudSyncReady(false);
+      reloadLocal();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !cloudSyncReady) return;
+    const t = setTimeout(() => cloudReplaceCollection('refinements', user.id, history, e => e.id || String(e.timestamp)), 700);
+    return () => clearTimeout(t);
+  }, [history, user, cloudSyncReady]);
+
+  useEffect(() => {
+    if (!user || !cloudSyncReady) return;
+    const t = setTimeout(() => cloudReplaceCollection('saved_prompts', user.id, saved, e => e.id), 700);
+    return () => clearTimeout(t);
+  }, [saved, user, cloudSyncReady]);
+
+  useEffect(() => {
+    if (!user || !cloudSyncReady) return;
+    const t = setTimeout(() => cloudUpsertSettings(user.id, settings), 700);
+    return () => clearTimeout(t);
+  }, [settings, user, cloudSyncReady]);
 
   // Run Prompt panel state.
   // - currentConvo: the active conversation (null if none started yet)
@@ -380,16 +471,22 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [activeView, confirmState, piiFindings, templateVarsOpen, shareModalOpen, pdfModalOpen, importExportOpen, shortcutsOpen]);
 
+  // Persist synced collections to localStorage ONLY for anonymous users. When
+  // logged in, this data lives in Supabase (see the cloud-sync effects), and we
+  // leave localStorage untouched so it stays the anonymous-session store.
+  function lsSet(key, value) { if (!user) localStorage.setItem(key, value); }
+  function lsRemove(key)      { if (!user) localStorage.removeItem(key); }
+
   function updateSettings(partial) {
     const updated = { ...settings, ...partial };
     setSettings(updated);
-    localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(updated));
+    lsSet(STORAGE_SETTINGS, JSON.stringify(updated));
   }
 
   function resetSettings() {
     showConfirm('Reset all settings to defaults?', () => {
       setSettings(DEFAULT_SETTINGS);
-      localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
+      lsSet(STORAGE_SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
       addToast('Settings reset to defaults');
     }, 'Reset');
   }
@@ -398,6 +495,7 @@ function App() {
     if (!u || (u.inputTokens === 0 && u.outputTokens === 0)) return;
     const cost = computeCost(model, u);
     const record = {
+      id: makeId(),
       timestamp: Date.now(),
       model,
       inputTokens: u.inputTokens || 0,
@@ -408,15 +506,16 @@ function App() {
     };
     setUsage((prev) => {
       const next = [record, ...prev].slice(0, MAX_USAGE_RECORDS);
-      localStorage.setItem(STORAGE_USAGE, JSON.stringify(next));
+      lsSet(STORAGE_USAGE, JSON.stringify(next));
       return next;
     });
+    if (user) cloudInsertUsage(user.id, record);
   }
 
   function clearUsage() {
     showConfirm('Reset all usage data? This cannot be undone.', () => {
       setUsage([]);
-      localStorage.removeItem(STORAGE_USAGE);
+      lsRemove(STORAGE_USAGE);
       addToast('Usage data cleared');
     }, 'Reset');
   }
@@ -427,15 +526,16 @@ function App() {
       e => e.rough === entry.rough && e.improved === entry.improved && e.model === entry.model
     );
     if (isDup) return;
-    const updated = [entry, ...history].slice(0, MAX_HISTORY);
+    const withId = entry.id ? entry : { ...entry, id: makeId() };
+    const updated = [withId, ...history].slice(0, MAX_HISTORY);
     setHistory(updated);
-    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+    lsSet(STORAGE_HISTORY, JSON.stringify(updated));
   }
 
   function clearHistory() {
     showConfirm('Clear all history? This cannot be undone.', () => {
       setHistory([]);
-      localStorage.removeItem(STORAGE_HISTORY);
+      lsRemove(STORAGE_HISTORY);
       addToast('History cleared');
     }, 'Clear');
   }
@@ -444,9 +544,9 @@ function App() {
     const updated = history.filter(e => e.timestamp !== timestamp);
     setHistory(updated);
     if (updated.length === 0) {
-      localStorage.removeItem(STORAGE_HISTORY);
+      lsRemove(STORAGE_HISTORY);
     } else {
-      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+      lsSet(STORAGE_HISTORY, JSON.stringify(updated));
     }
   }
 
@@ -460,7 +560,7 @@ function App() {
       ...updated.filter(e => !e.pinned),
     ];
     setHistory(sorted);
-    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(sorted));
+    lsSet(STORAGE_HISTORY, JSON.stringify(sorted));
   }
 
   function addTagToHistory(timestamp, tag) {
@@ -473,7 +573,7 @@ function App() {
       return { ...e, tags: [...tags, t] };
     });
     setHistory(updated);
-    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+    lsSet(STORAGE_HISTORY, JSON.stringify(updated));
   }
 
   function removeTagFromHistory(timestamp, tag) {
@@ -483,7 +583,7 @@ function App() {
         : e
     );
     setHistory(updated);
-    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+    lsSet(STORAGE_HISTORY, JSON.stringify(updated));
   }
 
   function clearCurrentRefinement() {
@@ -570,7 +670,7 @@ function App() {
 
   function persistSaved(next) {
     setSaved(next);
-    localStorage.setItem(STORAGE_SAVED, JSON.stringify(next));
+    lsSet(STORAGE_SAVED, JSON.stringify(next));
   }
 
   function toggleSaveCurrent() {
@@ -887,7 +987,7 @@ function App() {
     if (importedHistory.length > 0) {
       const next = [...history, ...importedHistory].slice(0, MAX_HISTORY);
       setHistory(next);
-      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(next));
+      lsSet(STORAGE_HISTORY, JSON.stringify(next));
       count += importedHistory.length;
     }
     if (importedSaved.length > 0) {
@@ -975,6 +1075,9 @@ function App() {
   async function executeRefinement({ feedback = null, overridePrompt = null, passNum = 1, passTotal = 1 } = {}) {
     const sourcePrompt = overridePrompt || (feedback ? submittedPrompt : roughPrompt);
     if (!sourcePrompt.trim() || streaming || comparing) return;
+
+    // Count one anonymous refinement per user-initiated run (not per multi-pass step).
+    if (anonGateActive && passNum === 1) bumpAnonRefinements();
 
     if (isRecording) stopRecording();
 
@@ -1136,6 +1239,13 @@ function App() {
     const sourcePrompt = overridePrompt || (feedback ? submittedPrompt : roughPrompt);
     if (!sourcePrompt.trim() || streaming || comparing) return;
 
+    // Anonymous trial gate: once the cap is hit, prompt sign-in instead of refining.
+    if (anonGateActive && anonRefinements >= ANON_REFINEMENT_LIMIT) {
+      addToast(`You've used your ${ANON_REFINEMENT_LIMIT} free refinements for today. Sign in for unlimited.`, 'info');
+      setAuthModalOpen(true);
+      return;
+    }
+
     // Check for template variables (only on initial submit, not follow-ups)
     if (!feedback && !overridePrompt) {
       const vars = extractVariables(sourcePrompt);
@@ -1230,7 +1340,7 @@ function App() {
             const updated = [...current];
             if (updated.length > 0) {
               updated[0] = { ...updated[0], comparison: { columns: workingColumns } };
-              localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+              lsSet(STORAGE_HISTORY, JSON.stringify(updated));
             }
             return updated;
           });
@@ -2399,6 +2509,13 @@ function App() {
                     </span>
                     {promptComplexity.label}
                   </span>
+                )}
+                {!isRecording && anonGateActive && (
+                  <button type="button" className="anon-quota" onClick={() => setAuthModalOpen(true)}>
+                    {anonRefinementsLeft > 0
+                      ? `${anonRefinementsLeft} free refinement${anonRefinementsLeft === 1 ? '' : 's'} left today · sign in for unlimited`
+                      : "Daily free limit reached · sign in for unlimited"}
+                  </button>
                 )}
               </span>
               <button
